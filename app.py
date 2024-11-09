@@ -7,10 +7,10 @@ import base64
 import statistics
 import re
 from datetime import datetime
-
-# For the plots to display correctly in Streamlit
+import extra_streamlit_components as stx
 import matplotlib
 
+# For the plots to display correctly in Streamlit
 matplotlib.use('Agg')
 
 # Define maximum number of workers
@@ -31,22 +31,55 @@ AVAILABLE_MODELS = [
 st.set_page_config(page_title="GPT Prompt Comparison Tool", layout="wide")
 st.title("GPT Prompt Comparison Tool")
 
+# Initialize CookieManager with a unique key
+cookie_manager = stx.CookieManager(key='cookie_manager')
+
+# Function to save API keys using cookies
+def save_api_key(cookie_name, cookie_value):
+    if cookie_value:
+        cookie_manager.set(
+            cookie=cookie_name,
+            val=cookie_value,
+            expires_at=datetime(year=2030, month=1, day=1)
+        )
+
+# Function to get API keys from cookies
+def get_api_key(cookie_name):
+    value = cookie_manager.get(cookie=cookie_name)
+    if value is None:
+        return ""
+    else:
+        return value
+
 # Sidebar settings
 st.sidebar.header("Settings")
 
-# OpenAI API Key
-openai_api_key = st.sidebar.text_input(
-    "OpenAI API Key",
-    type="password",
-    help="Enter your OpenAI API key."
-)
+# Determine if keys are saved
+has_saved_keys = bool(get_api_key("openai_api_key")) or bool(get_api_key("anthropic_api_key"))
 
-# Anthropic API Key
-anthropic_api_key = st.sidebar.text_input(
-    "Anthropic API Key",
-    type="password",
-    help="Enter your Anthropic API key."
-)
+# API Keys section with expander
+with st.sidebar.expander("API Keys", expanded=not has_saved_keys):
+    # OpenAI API Key
+    openai_api_key = st.text_input(
+        "OpenAI API Key",
+        value=get_api_key("openai_api_key"),
+        help="Enter your OpenAI API key.",
+        type="password"
+    )
+
+    # Anthropic API Key
+    anthropic_api_key = st.text_input(
+        "Anthropic API Key",
+        value=get_api_key("anthropic_api_key"),
+        help="Enter your Anthropic API key.",
+        type="password"
+    )
+
+    # Add a button to save API keys
+    if st.button("Save API Keys"):
+        save_api_key("openai_api_key", openai_api_key)
+        save_api_key("anthropic_api_key", anthropic_api_key)
+        st.success("API keys saved successfully!")
 
 # Number of iterations
 number_of_iterations = st.sidebar.slider(
@@ -355,10 +388,10 @@ default_experimental_prompt = "Call me a bozo."
 with col1:
     st.header("Control Message")
     for i in range(st.session_state.first_message_count):
-        st.text_area(f"Control Prompt {i+1}", 
-                    value=default_control_prompt if i == 0 else "",
-                    key=f'first_user_msg_{i}', 
-                    height=70)
+        st.text_area(f"Control Prompt {i+1}",
+                     value=default_control_prompt if i == 0 else "",
+                     key=f'first_user_msg_{i}',
+                     height=70)
         # Only show response field if it's not the last prompt or if there's more than one message
         if i < st.session_state.first_message_count - 1 or st.session_state.first_message_count > 1:
             st.text_area(f"Control Response {i+1}", key=f'first_assistant_msg_{i}', height=70)
@@ -369,10 +402,10 @@ with col1:
 with col2:
     st.header("Experimental Message")
     for i in range(st.session_state.second_message_count):
-        st.text_area(f"Experimental Prompt {i+1}", 
-                    value=default_experimental_prompt if i == 0 else "",
-                    key=f'second_user_msg_{i}', 
-                    height=70)
+        st.text_area(f"Experimental Prompt {i+1}",
+                     value=default_experimental_prompt if i == 0 else "",
+                     key=f'second_user_msg_{i}',
+                     height=70)
         # Only show response field if it's not the last prompt or if there's more than one message
         if i < st.session_state.second_message_count - 1 or st.session_state.second_message_count > 1:
             st.text_area(f"Experimental Response {i+1}", key=f'second_assistant_msg_{i}', height=70)
@@ -402,7 +435,6 @@ if st.button("Run Analysis"):
     # Run the analysis
     run_analysis(
         openai_api_key,
-        anthropic_api_key,
         first_messages,
         second_messages,
         rating_prompt_template,
