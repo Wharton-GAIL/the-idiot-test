@@ -10,4 +10,6 @@ anthropic>=0.8.0
 func-timeout>=4.3.5
 requests>=2.31.0
 python-dotenv>=1.0.0
+streamlit>=1.28.0
 streamlit-js-eval>=0.1.5
+extra-streamlit-components>=0.1.60
