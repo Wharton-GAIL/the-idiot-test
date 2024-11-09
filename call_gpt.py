@@ -19,7 +19,8 @@ call_gpt sends a query to an LLM and returns a response. Syntax:
 * "n" number of replies
 * "max_tokens" default is the max allowable
 * "min_reply_tokens" default is max_tokens/4
-* "api_key" required for API authentication
+* "openai_api_key" required for OpenAI API authentication
+* "anthropic_api_key" required for Anthropic API authentication
 - `return_pricing`: If True, returns the cost of the call as a float representing USD
 - `return_dict`: If True, returns the full API response as a dictionary; otherwise, just the reply string. 
 - `functions`: List of dicts specifying function(s) the LLM can call.
@@ -289,6 +290,15 @@ def handle_error(e: Exception, model: str) -> bool:
     logger.warning(f"Unhandled error for {model}: {error_message}")
     return False
 
+# Initialize Anthropic client
+anthropic_client = None
+
+def init_anthropic(anthropic_api_key: str):
+    global anthropic_client
+    if anthropic_client is None or anthropic_client.api_key != anthropic_api_key:
+        anthropic_client = Anthropic(api_key=anthropic_api_key)
+    return anthropic_client
+
 def send_llm_request(
     model: str,
     temperature: float,
@@ -296,7 +306,8 @@ def send_llm_request(
     max_tokens: int,
     n: int,
     timeout: float,
-    api_key: str,  # Added api_key parameter
+    openai_api_key: str,
+    anthropic_api_key: str,
     stop_sequences: Optional[List[str]] = None,
     logit_bias: Optional[dict] = None,
     functions: Optional[List[dict]] = None,
@@ -355,7 +366,7 @@ def send_llm_request(
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",  # Use the provided api_key
+            "Authorization": f"Bearer {openai_api_key}",  # Use the OpenAI API key
         }
         data = {
             "model": model,
@@ -388,7 +399,7 @@ def send_llm_request(
         url = "https://api.anthropic.com/v1/messages"
         headers = {
             "Content-Type": "application/json",
-            "x-api-key": api_key,
+            "x-api-key": anthropic_api_key,
             "anthropic-version": "2023-06-01"
         }
         data = {
@@ -460,7 +471,8 @@ def send_llm_request_with_retries(settings: Dict[str, Any], messages: List[Dict[
                 max_tokens=local_max_tokens,
                 n=settings.get("n", 1),
                 timeout=timeout,
-                api_key=settings.get("api_key"),  # Pass the API key
+                openai_api_key=settings.get("openai_api_key"),  # Pass the OpenAI API key
+                anthropic_api_key=settings.get("anthropic_api_key"),  # Pass the Anthropic API key
                 logit_bias=settings.get("logit_bias", None),
                 functions=settings.get("functions", None),
                 function_call=settings.get("function_call", None),
@@ -598,7 +610,8 @@ if __name__ == "__main__":
     settings = {
         "model": "gpt-4-turbo",
         "temperature": 0.7,
-        "api_key": "your-api-key-here"  # Add your API key here
+        "openai_api_key": "your-openai-api-key-here",  # Add your OpenAI API key here
+        "anthropic_api_key": "your-anthropic-api-key-here"  # Add your Anthropic API key here
     }
     
     # Test basic query

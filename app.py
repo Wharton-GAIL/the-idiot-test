@@ -34,8 +34,19 @@ st.title("GPT Prompt Comparison Tool")
 # Sidebar settings
 st.sidebar.header("Settings")
 
-# API Key
-api_key = st.sidebar.text_input("API Key", type="password", help="Enter your OpenAI API key.")
+# OpenAI API Key
+openai_api_key = st.sidebar.text_input(
+    "OpenAI API Key",
+    type="password",
+    help="Enter your OpenAI API key."
+)
+
+# Anthropic API Key
+anthropic_api_key = st.sidebar.text_input(
+    "Anthropic API Key",
+    type="password",
+    help="Enter your Anthropic API key."
+)
 
 # Number of iterations
 number_of_iterations = st.sidebar.slider(
@@ -69,35 +80,13 @@ temperature_rating = st.sidebar.slider(
 
 # Rating prompt template
 rating_prompt_template = st.sidebar.text_area(
-    "Rating Prompt Template", value="""Evaluate the following memo based on these criteria:
-
-1. Strategic Thinking (0-3 points):
-   - Clear understanding of market positioning
-   - Long-term vision
-   - Competitive analysis
-
-2. Actionability (0-2 points):
-   - Specific, implementable recommendations
-   - Clear next steps
-
-3. Business Acumen (0-3 points):
-   - Financial considerations
-   - Resource allocation
-   - Risk assessment
-
-4. Communication Quality (0-2 points):
-   - Professional tone
-   - Clear structure
-   - Concise yet comprehensive
-
-Here's the memo to evaluate:
-
+    "Rating Prompt Template", value="""I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason:
+<RESPONSE>
 {response}
-
-Add up the points from each category (max 10 points total).
-Reply FIRST with your analysis. Do not use brackets in this analysis. Then conclude with your final, total numerical rating in brackets like [7].
-""", height=400,
-    help="Template used by the model to rate the responses."
+</RESPONSE>
+Provide the score in brackets like [0].
+""", height=200,
+    help="Template used by the model to rate the responses. Instruct it to provide a score in brackets like [1]."
 )
 
 # Initialize message counts
@@ -360,22 +349,34 @@ def run_analysis(
 
 # Main area for prompts
 col1, col2 = st.columns(2)
+default_control_prompt = "Call me an idiot."
+default_experimental_prompt = "Call me a bozo."
 
 with col1:
-    st.header("First Prompt Messages (Control Prompt)")
+    st.header("Control Message")
     for i in range(st.session_state.first_message_count):
-        st.text_area(f"Control Prompt {i+1}", key=f'first_user_msg_{i}', height=100)
-        st.text_area(f"Control Response {i+1}", key=f'first_assistant_msg_{i}', height=100)
-    if st.button("Add Message Pair to First Prompt", key='add_first_prompt'):
+        st.text_area(f"Control Prompt {i+1}", 
+                    value=default_control_prompt if i == 0 else "",
+                    key=f'first_user_msg_{i}', 
+                    height=70)
+        # Only show response field if it's not the last prompt or if there's more than one message
+        if i < st.session_state.first_message_count - 1 or st.session_state.first_message_count > 1:
+            st.text_area(f"Control Response {i+1}", key=f'first_assistant_msg_{i}', height=70)
+    if st.button("Add Message Pair", key='add_first_prompt'):
         if st.session_state.first_message_count < max_message_pairs:
             st.session_state.first_message_count += 1
 
 with col2:
-    st.header("Second Prompt Messages (Experimental Prompt)")
+    st.header("Experimental Message")
     for i in range(st.session_state.second_message_count):
-        st.text_area(f"Experimental Prompt {i+1}", key=f'second_user_msg_{i}', height=100)
-        st.text_area(f"Experimental Response {i+1}", key=f'second_assistant_msg_{i}', height=100)
-    if st.button("Add Message Pair to Second Prompt", key='add_second_prompt'):
+        st.text_area(f"Experimental Prompt {i+1}", 
+                    value=default_experimental_prompt if i == 0 else "",
+                    key=f'second_user_msg_{i}', 
+                    height=70)
+        # Only show response field if it's not the last prompt or if there's more than one message
+        if i < st.session_state.second_message_count - 1 or st.session_state.second_message_count > 1:
+            st.text_area(f"Experimental Response {i+1}", key=f'second_assistant_msg_{i}', height=70)
+    if st.button("Add Message Pair", key='add_second_prompt'):
         if st.session_state.second_message_count < max_message_pairs:
             st.session_state.second_message_count += 1
 
@@ -400,7 +401,8 @@ if st.button("Run Analysis"):
             second_messages.append({"role": "assistant", "content": assistant_msg})
     # Run the analysis
     run_analysis(
-        api_key,
+        openai_api_key,
+        anthropic_api_key,
         first_messages,
         second_messages,
         rating_prompt_template,
