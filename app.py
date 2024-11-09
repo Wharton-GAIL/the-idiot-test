@@ -224,7 +224,8 @@ def generate_analysis(
     # Plot rating density
     for data, color, label in [(ratings1, 'skyblue', 'First Prompt'),
                                (ratings2, 'lightgreen', 'Second Prompt')]:
-        hist, bins = np.histogram(data, bins=range(0, 12), density=True)
+        max_rating = max(max(ratings1), max(ratings2))
+        hist, bins = np.histogram(data, bins=range(0, int(max_rating) + 2), density=True)
         bin_centers = (bins[:-1] + bins[1:]) / 2
         ax3.fill_between(bin_centers, hist, alpha=0.5, color=color, label=label)
     ax3.set_title('Rating Distribution')
