@@ -363,13 +363,6 @@ def run_analysis(
     analyze_length,
     show_raw_results
 ):
-    if not openai_api_key:
-        st.error("Please provide an OpenAI API Key.")
-        return
-
-    if not anthropic_api_key:
-        st.error("Please provide an Anthropic API Key.")
-        return
 
     if not first_messages:
         st.error("Please provide at least one message for the control prompt.")
