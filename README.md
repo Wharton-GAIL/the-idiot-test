@@ -14,13 +14,10 @@ An interactive web application to compare, analyze, and visualize the performanc
 - [Usage](#usage)
   - [Running the App](#running-the-app)
   - [Application Overview](#application-overview)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
 
 ## Introduction
 
-**The Idiot Test** is a powerful tool designed for AI researchers, developers, and enthusiasts to evaluate and compare the effectiveness of different prompts when interacting with large language models like OpenAI's GPT series or Anthropic's models.
+**The Idiot Test** is a tool designed for AI researchers, developers, and enthusiasts to evaluate and compare the effectiveness of different prompts when interacting with large language models like OpenAI's GPT series or Anthropic's models.
 
 By running multiple iterations of prompts and analyzing the responses, users can gain statistical insights into how changes in prompts affect model outputs, including response length, ratings, and overall performance.
 
@@ -172,7 +169,7 @@ By running multiple iterations of prompts and analyzing the responses, users can
 
 - On the sidebar, expand the **API Keys** section.
 - Input your **OpenAI API Key** and/or **Anthropic API Key**.
-- Click the **Save API Keys** button to store them securely.
+- Click the **Save API Keys** button to store them securely in your browser. Note: saving keys does not work reliably between sessions.
 
 #### 2. **Settings**
 
