@@ -17,9 +17,14 @@ matplotlib.use('Agg')
 MAX_WORKERS = 5
 
 AVAILABLE_MODELS = [
-    "gpt-3.5-turbo",
-    "gpt-4",
-    # Add other models if needed
+    "gpt-4o-mini",
+    "gpt-4o",
+    "o1-mini",
+    "o1-preview",
+    "sonnet",
+    "haiku",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro"
 ]
 
 # Set the page configuration
