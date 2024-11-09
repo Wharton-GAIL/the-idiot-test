@@ -266,7 +266,7 @@ def generate_analysis(
 
     return analysis_data, plot_base64, total_cost
 
-def create_html_report(analysis_data, plot_base64, total_cost, show_raw_results=False, responses1=None, responses2=None, ratings1=None, ratings2=None, rating_texts1=None, rating_texts2=None):
+def create_html_report(analysis_data, plot_base64, total_cost, first_messages, second_messages, control_rating_prompt_template, experimental_rating_prompt_template, show_raw_results=False, responses1=None, responses2=None, ratings1=None, ratings2=None, rating_texts1=None, rating_texts2=None):
     from tabulate import tabulate
     
     # Base HTML content
@@ -287,10 +287,57 @@ def create_html_report(analysis_data, plot_base64, total_cost, show_raw_results=
                 margin: 10px 0;
                 border-radius: 4px;
             }}
+            .info-section {{
+                background-color: #f8f9fa;
+                border: 1px solid #ddd;
+                padding: 20px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }}
+            .prompt-container {{
+                display: flex;
+                gap: 20px;
+                margin: 20px 0;
+            }}
+            .prompt-section {{
+                flex: 1;
+                margin: 10px 0;
+            }}
+            .prompt-label {{
+                font-weight: bold;
+                color: #555;
+            }}
         </style>
     </head>
     <body>
         <h1>Research Results</h1>
+
+        <div class="info-section">
+            <h2>Configuration</h2>
+            <p><strong>Number of Iterations:</strong> {len(responses1)}</p>
+            
+            <div class="prompt-container">
+                <div class="prompt-section">
+                    <h3>Control Messages</h3>
+                    <div class="response-box">
+                        {chr(10).join(msg['content'] for msg in first_messages)}
+                    </div>
+                    
+                    <h4>Control Rating Prompt</h4>
+                    <div class="response-box">{control_rating_prompt_template}</div>
+                </div>
+
+                <div class="prompt-section">
+                    <h3>Experimental Messages</h3>
+                    <div class="response-box">
+                        {chr(10).join(msg['content'] for msg in second_messages)}
+                    </div>
+                    
+                    <h4>Experimental Rating Prompt</h4>
+                    <div class="response-box">{experimental_rating_prompt_template}</div>
+                </div>
+            </div>
+        </div>
 
         <h2>Cost Analysis</h2>
         <p>Total API cost: ${total_cost:.4f}</p>
@@ -408,13 +455,17 @@ def run_analysis(
         analysis_data, 
         plot_base64, 
         total_cost,
-        show_raw_results,
-        responses1 if show_raw_results else None,
-        responses2 if show_raw_results else None,
-        ratings1 if show_raw_results else None,
-        ratings2 if show_raw_results else None,
-        rating_texts1 if show_raw_results else None,
-        rating_texts2 if show_raw_results else None
+        first_messages,
+        second_messages,
+        control_rating_prompt_template,
+        experimental_rating_prompt_template,
+        show_raw_results=show_raw_results,
+        responses1=responses1,
+        responses2=responses2,
+        ratings1=ratings1,
+        ratings2=ratings2,
+        rating_texts1=rating_texts1,
+        rating_texts2=rating_texts2
     )
     
     # Provide a download button for the HTML report
