@@ -1,5 +1,7 @@
 # The Idiot Test
 
+![The Idiot Test Header](idiot-test-header-image.png)
+
 An interactive web application to compare, analyze, and visualize the performance of different prompts using OpenAI and Anthropic models.
 
 ## Table of Contents
