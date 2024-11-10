@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 import extra_streamlit_components as stx
 import matplotlib
+import os
 
 from call_gpt import call_gpt
 
@@ -58,7 +59,7 @@ def get_api_key(cookie_name):
 st.sidebar.header("Settings")
 
 # Determine if keys are saved
-has_saved_keys = bool(get_api_key("openai_api_key")) or bool(get_api_key("anthropic_api_key"))
+has_saved_keys = bool(get_api_key("openai_api_key")) or bool(get_api_key("anthropic_api_key")) or bool(get_api_key("gemini_api_key"))
 
 # API Keys section with expander
 with st.sidebar.expander("API Keys", expanded=not has_saved_keys):
@@ -78,10 +79,22 @@ with st.sidebar.expander("API Keys", expanded=not has_saved_keys):
         type="password"
     )
 
+    # Google Gemini API Key
+    gemini_api_key = st.text_input(
+        "Google Gemini API Key",
+        value=get_api_key("gemini_api_key"),
+        help="Enter your Google Gemini API key.",
+        type="password"
+    )
+
+    # Export the Google Gemini API key as an environment variable
+    os.environ['GOOGLE_API_KEY'] = gemini_api_key
+
     # Add a button to save API keys
     if st.button("Save API Keys", key="save_api_keys_button"):
         save_api_key("openai_api_key", openai_api_key)
         save_api_key("anthropic_api_key", anthropic_api_key)
+        save_api_key("gemini_api_key", gemini_api_key)
         st.success("API keys saved successfully!", icon="✅")
 
 # Number of iterations
@@ -388,6 +401,7 @@ def create_html_report(analysis_data, plot_base64, total_cost, first_messages, s
 def run_analysis(
     openai_api_key,
     anthropic_api_key,
+    gemini_api_key,
     first_messages,
     second_messages,
     control_rating_prompt_template,
@@ -413,14 +427,16 @@ def run_analysis(
         "model": model_response,
         "temperature": float(temperature_response),
         "openai_api_key": openai_api_key,
-        "anthropic_api_key": anthropic_api_key
+        "anthropic_api_key": anthropic_api_key,
+        "gemini_api_key": gemini_api_key
     }
     settings_rating = {
         "model": model_rating,
         "temperature": float(temperature_rating),
         "stop_sequences": "]",
         "openai_api_key": openai_api_key,
-        "anthropic_api_key": anthropic_api_key
+        "anthropic_api_key": anthropic_api_key,
+        "gemini_api_key": gemini_api_key
     }
     # Add status message
     status = st.empty()
@@ -600,6 +616,7 @@ if st.button("Run Analysis"):
     run_analysis(
         openai_api_key,
         anthropic_api_key,
+        gemini_api_key,
         first_messages,
         second_messages,
         control_rating_prompt_template,

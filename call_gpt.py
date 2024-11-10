@@ -40,7 +40,7 @@ call_gpt sends a query to an LLM and returns a response. Syntax:
 
 import openai
 import tiktoken
-import google.generativeai as genai # pip install google-generativeai
+import google.generativeai as google_genai  # pip install google-generativeai
 from google.generativeai.types.content_types import to_contents
 import google.api_core.exceptions
 import google.auth.exceptions
@@ -65,8 +65,25 @@ else:  # Linux
     sys.path.append('../dan-tools')
 from log_love import setup_logging
 
+# Load environment variables from .env file
+load_dotenv()
+
 logger = None
 logger = setup_logging(logger)
+
+# Flag to ensure google_genai is configured only once
+_genai_initialized = False
+
+def initialize_google_genai():
+    global _genai_initialized
+    if not _genai_initialized:
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            logger.error("GOOGLE_API_KEY environment variable not set.")
+            raise EnvironmentError("GOOGLE_API_KEY environment variable not set.")
+        google_genai.configure(api_key=api_key)
+        _genai_initialized = True
+        logger.info("Google GenAI configured successfully.")
 
 # Define model details. Pricing is per 1M tokens. Rate limits are request/min, but not yet implemented.
 MODELS = {
@@ -137,8 +154,9 @@ def get_tokens(to_tokenize: str, model: str) -> Optional[int]:
     if not isinstance(to_tokenize, str):
         raise ValueError("Input to tokenize must be a string")
     if model.startswith('gemini-'):
-        genai_model = genai.GenerativeModel(model)
-        return genai_model.count_tokens(to_tokenize).total_tokens
+        initialize_google_genai()
+        google_genai_model = google_genai.GenerativeModel(model)
+        return google_genai_model.count_tokens(to_tokenize).total_tokens
     elif model.startswith('claude-'):
         return anthropic_client.count_tokens(to_tokenize)
     elif model.startswith('gpt-') or model.startswith('o1-'):
@@ -161,7 +179,8 @@ def get_tokens(to_tokenize: str, model: str) -> Optional[int]:
 
 def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functions: Optional[List[dict]] = None, function_call: Optional[dict] = None, system_prompt: Optional[str] = None) -> int:
     if model.startswith('gemini-'):
-        genai_model = genai.GenerativeModel(model)
+        initialize_google_genai()
+        google_genai_model = google_genai.GenerativeModel(model)
         # Convert messages to Gemini format
         gemini_content = []
         for message in messages:
@@ -173,7 +192,7 @@ def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functio
                 # Handle system messages or any other roles as user messages
                 gemini_content.append({"role": "user", "parts": [{"text": message['content']}]})
         
-        return genai_model.count_tokens(gemini_content).total_tokens
+        return google_genai_model.count_tokens(gemini_content).total_tokens
     
     num_tokens = 0
     for message in messages:
@@ -318,6 +337,7 @@ def send_llm_request(
     Sends a request to the LLM API.
     """
     if model.startswith('gemini-'):
+        initialize_google_genai()
         # Convert messages to Gemini format
         gemini_content = []
         for message in messages:
@@ -330,11 +350,11 @@ def send_llm_request(
                 gemini_content.append({"role": "user", "parts": [{"text": message['content']}]})
 
         # Initialize the Gemini model with the system instruction
-        genai_model = genai.GenerativeModel(model, system_instruction=system_prompt)
+        google_genai_model = google_genai.GenerativeModel(model, system_instruction=system_prompt)
 
-        response = genai_model.generate_content(
+        response = google_genai_model.generate_content(
             gemini_content,
-            generation_config=genai.types.GenerationConfig(
+            generation_config=google.generativeai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
                 top_p=0.95,
@@ -342,8 +362,8 @@ def send_llm_request(
                 stop_sequences=stop_sequences
             )
         )
-        prompt_tokens = genai_model.count_tokens(gemini_content).total_tokens
-        completion_tokens = genai_model.count_tokens(response.text).total_tokens
+        prompt_tokens = google_genai_model.count_tokens(gemini_content).total_tokens
+        completion_tokens = google_genai_model.count_tokens(response.text).total_tokens
         total_tokens = prompt_tokens + completion_tokens
 
         return_data = {
