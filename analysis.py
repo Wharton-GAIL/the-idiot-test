@@ -131,6 +131,8 @@ def create_html_report(
     model_rating=None,
     temperature_response=None,
     temperature_rating=None,
+    control_system_message=None,
+    experiment_system_message=None,
 ):
     # Construct HTML for original prompts
     def extract_user_messages(messages):
@@ -145,13 +147,60 @@ def create_html_report(
         conversation_html = ('<br>').join(conversation)
         return conversation_html
 
+    system_messages_html = f"""
+    <div class="config-section" style="margin-bottom: 0;">
+        <div class="config-columns">
+            <div class="config-column">
+                <div class="prompt-label">Control System Message:</div>
+                <div class="response-box" style="margin-bottom: 0;">{control_system_message if control_system_message else 'None'}</div>
+            </div>
+            <div class="config-column">
+                <div class="prompt-label">Experimental System Message:</div>
+                <div class="response-box">{experiment_system_message if experiment_system_message else 'None'}</div>
+            </div>
+        </div>
+    </div>
+    """
+
     original_prompts_html = f"""
     <div class="config-section">
-        <h3>Original Control Prompts</h3>
-        {extract_user_messages(messages_ctrl_original)}
-        <h3>Original Experimental Prompts</h3>
-        {extract_user_messages(messages_exp_original)}
+        <div class="config-columns">
+            <div class="config-column">
+                <div class="prompt-label" style="margin-top: 0;">Control Prompts</div>
+                <div class="response-box">{extract_user_messages(messages_ctrl_original)}</div>
+            </div>
+            <div class="config-column">
+                <div class="prompt-label">Experimental Prompts</div>
+                <div class="response-box">{extract_user_messages(messages_exp_original)}</div>
+            </div>
+        </div>
     </div>
+    """
+
+    # Make sure the CSS includes these styles
+    css_styles = """
+        .config-columns {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        .config-column {
+            flex: 1;
+            min-width: 0;  /* This prevents flex items from overflowing */
+        }
+        .prompt-label {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .response-box {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            word-wrap: break-word;  /* Ensures long text wraps properly */
+        }
     """
 
     html_content = f"""
@@ -207,7 +256,7 @@ def create_html_report(
             <p><strong>Response Temperature:</strong> {temperature_response}</p>
             <p><strong>Rating Model:</strong> {model_rating}</p>
             <p><strong>Rating Temperature:</strong> {temperature_rating}</p>
-            <!-- Insert Original Prompts -->
+            {system_messages_html}
             {original_prompts_html}
         </div>
 

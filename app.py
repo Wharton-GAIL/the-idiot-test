@@ -395,6 +395,8 @@ def run_analysis(
         model_rating=model_rating,
         temperature_response=temperature_response,
         temperature_rating=temperature_rating,
+        control_system_message=control_system_message,
+        experiment_system_message=experiment_system_message,
     )
 
     st.download_button(
