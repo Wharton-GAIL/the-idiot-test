@@ -13,7 +13,7 @@ import os
 
 from call_gpt import call_gpt
 
-from analysis import run_analysis
+from analysis import generate_analysis, create_html_report
 
 # For the plots to display correctly in Streamlit
 matplotlib.use('Agg')
@@ -207,6 +207,148 @@ with col2:
         key='experimental_rating_prompt_template',
         help="Template used by the model to rate the responses for the experimental prompt."
     )
+
+# Moved Functions Start Here
+
+def get_rating_prompt(response, rating_prompt_template):
+    return rating_prompt_template.format(response=response)
+
+def rate_response(response, settings_rating, rating_prompt_template):
+    rating_prompt = get_rating_prompt(response, rating_prompt_template)
+    rating_response, rating_cost = call_gpt(rating_prompt, settings=settings_rating, return_pricing=True)
+    if not rating_response.strip().endswith(']'):
+        rating_response += "]"
+    rating_match = re.search(r'\[(\d+\.?\d*)\]', rating_response)
+    if rating_match:
+        rating = float(rating_match.group(1))
+        return rating, rating_cost, rating_response
+    return None, rating_cost, rating_response
+
+def get_responses_and_lengths(
+    messages, n, settings_response, settings_rating, rating_prompt_template, analyze_length=True
+):
+    lengths = []
+    responses = []
+    ratings = []
+    rating_texts = []
+    total_cost = 0
+
+    progress_bar = st.progress(0)
+
+    for i in range(n):
+        try:
+            progress = (i + 1) / n
+            progress_bar.progress(progress)
+
+            response, cost = call_gpt(messages, settings=settings_response, return_pricing=True)
+            rating, rating_cost, rating_text = rate_response(response, settings_rating, rating_prompt_template)
+            if rating is not None:
+                total_cost += cost + rating_cost
+                responses.append(response)
+                if analyze_length:
+                    lengths.append(len(response))
+                else:
+                    lengths.append(None)
+                ratings.append(rating)
+                rating_texts.append(rating_text)
+            else:
+                st.error(f"Failed to extract rating for iteration {i+1}.")
+        except Exception as e:
+            st.error(f"Error in iteration {i+1}: {e}")
+
+    progress_bar.empty()
+
+    return responses, lengths, ratings, rating_texts, total_cost
+
+def run_analysis(
+    openai_api_key,
+    anthropic_api_key,
+    gemini_api_key,
+    first_messages,
+    second_messages,
+    control_rating_prompt_template,
+    experimental_rating_prompt_template,
+    number_of_iterations,
+    model_response,
+    temperature_response,
+    model_rating,
+    temperature_rating,
+    analyze_length,
+    show_raw_results
+):
+    if not first_messages:
+        st.error("Please provide at least one message for the control prompt.")
+        return
+    if not second_messages:
+        st.error("Please provide at least one message for the experimental prompt.")
+        return
+
+    settings_response = {
+        "model": model_response,
+        "temperature": float(temperature_response),
+        "openai_api_key": openai_api_key,
+        "anthropic_api_key": anthropic_api_key,
+        "gemini_api_key": gemini_api_key
+    }
+    settings_rating = {
+        "model": model_rating,
+        "temperature": float(temperature_rating),
+        "stop_sequences": "]",
+        "openai_api_key": openai_api_key,
+        "anthropic_api_key": anthropic_api_key,
+        "gemini_api_key": gemini_api_key
+    }
+
+    status = st.empty()
+
+    status.text("Analyzing control prompt...")
+    responses1, lengths1, ratings1, rating_texts1, cost1 = get_responses_and_lengths(
+        first_messages, number_of_iterations, settings_response, settings_rating,
+        control_rating_prompt_template, analyze_length
+    )
+
+    status.text("Analyzing experimental prompt...")
+    responses2, lengths2, ratings2, rating_texts2, cost2 = get_responses_and_lengths(
+        second_messages, number_of_iterations, settings_response, settings_rating,
+        experimental_rating_prompt_template, analyze_length
+    )
+
+    status.text("Generating analysis...")
+    analysis_data, plot_base64, total_cost = generate_analysis(
+        responses1, lengths1, ratings1, cost1,
+        responses2, lengths2, ratings2, cost2,
+        analyze_length
+    )
+
+    status.empty()
+
+    # Generate the HTML report
+    html_report = create_html_report(
+        analysis_data,
+        plot_base64,
+        total_cost,
+        first_messages,
+        second_messages,
+        control_rating_prompt_template,
+        experimental_rating_prompt_template,
+        show_raw_results=show_raw_results,
+        responses1=responses1,
+        responses2=responses2,
+        ratings1=ratings1,
+        ratings2=ratings2,
+        rating_texts1=rating_texts1,
+        rating_texts2=rating_texts2
+    )
+
+    st.download_button(
+        label="Download Report as HTML",
+        data=html_report,
+        file_name="analysis_report.html",
+        mime="text/html"
+    )
+
+    # Display the HTML report in Streamlit
+    st.components.v1.html(html_report, height=1000, scrolling=True)
 
 # Run Analysis button
 if st.button("Run Analysis"):
