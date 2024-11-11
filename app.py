@@ -334,7 +334,11 @@ def run_analysis(
         ratings_ctrl=ratings_ctrl,
         ratings_exp=ratings_exp,
         rating_texts_ctrl=rating_texts_ctrl,
-        rating_texts_exp=rating_texts_exp
+        rating_texts_exp=rating_texts_exp,
+        model_response=model_response,
+        model_rating=model_rating,
+        temperature_response=temperature_response,
+        temperature_rating=temperature_rating
     )
 
     st.download_button(

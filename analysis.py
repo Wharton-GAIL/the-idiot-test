@@ -104,7 +104,8 @@ def create_html_report(
     analysis_data, plot_base64, total_cost, messages_ctrl, messages_exp,
     control_rating_prompt_template, experimental_rating_prompt_template,
     show_raw_results=False, responses_ctrl=None, responses_exp=None,
-    ratings_ctrl=None, ratings_exp=None, rating_texts_ctrl=None, rating_texts_exp=None
+    ratings_ctrl=None, ratings_exp=None, rating_texts_ctrl=None, rating_texts_exp=None,
+    model_response=None, model_rating=None, temperature_response=None, temperature_rating=None
 ):
     # Ensure that iteration prompts and responses are lists
     responses_ctrl = responses_ctrl or []
@@ -156,6 +157,10 @@ def create_html_report(
         <div class="info-section">
             <h2>Configuration</h2>
             <p><strong>Number of Iterations:</strong> {len(responses_ctrl)}</p>
+            <p><strong>Response Generation Model:</strong> {model_response}</p>
+            <p><strong>Response Temperature:</strong> {temperature_response}</p>
+            <p><strong>Rating Model:</strong> {model_rating}</p>
+            <p><strong>Rating Temperature:</strong> {temperature_rating}</p>
             <div class="config-columns">
                 <div class="config-column">
                     <h3>Control Messages</h3>
