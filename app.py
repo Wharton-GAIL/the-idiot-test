@@ -191,7 +191,7 @@ with col1:
     )
 
 with col2:
-    st.header("experiment Message")
+    st.header("Experimental Message")
     if 'prompt_count_exp' not in st.session_state:
         st.session_state.prompt_count_exp = 1
 
