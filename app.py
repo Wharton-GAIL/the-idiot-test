@@ -136,11 +136,11 @@ temperature_rating = st.sidebar.slider(
 # Initialize message counts
 max_message_pairs = 5
 
-if 'first_message_count' not in st.session_state:
-    st.session_state.first_message_count = 1
+if 'message_count_ctrl' not in st.session_state:
+    st.session_state.message_count_ctrl = 1
 
-if 'second_message_count' not in st.session_state:
-    st.session_state.second_message_count = 1
+if 'message_count_exp' not in st.session_state:
+    st.session_state.message_count_exp = 1
 
 # Main area for prompts
 col1, col2 = st.columns(2)
@@ -149,23 +149,21 @@ default_experimental_prompt = "Call me a bozo."
 
 with col1:
     st.header("Control Message")
-    if 'first_prompt_count' not in st.session_state:
-        st.session_state.first_prompt_count = 1
+    if 'prompt_count_ctrl' not in st.session_state:
+        st.session_state.prompt_count_ctrl = 1
 
-    if st.button("Add Message Pair", key='add_first_prompt'):
-        if st.session_state.first_prompt_count < max_message_pairs:
-            st.session_state.first_prompt_count += 1
+    if st.button("Add Message Pair", key='add_prompt_ctrl'):
+        if st.session_state.prompt_count_ctrl < max_message_pairs:
+            st.session_state.prompt_count_ctrl += 1
 
     # Loop to display prompt and response inputs
-    for i in range(1, st.session_state.first_prompt_count + 1):
-        # Display the response for the previous prompt
+    for i in range(1, st.session_state.prompt_count_ctrl + 1):
         if i > 1:
-            st.text_area(f"Control Response {i-1}", key=f'first_assistant_msg_{i-1}', height=70)
+            st.text_area(f"Control Response {i-1}", key=f'assistant_msg_ctrl_{i-1}', height=70)
 
-        # Display the current prompt
         st.text_area(f"Control Prompt {i}",
                      value=default_control_prompt if i == 1 else "",
-                     key=f'first_user_msg_{i}',
+                     key=f'user_msg_ctrl_{i}',
                      height=70)
 
     # Evaluation Rubric for control messages
@@ -180,22 +178,21 @@ with col1:
 
 with col2:
     st.header("Experimental Message")
-    if 'second_prompt_count' not in st.session_state:
-        st.session_state.second_prompt_count = 1
+    if 'prompt_count_exp' not in st.session_state:
+        st.session_state.prompt_count_exp = 1
 
-    if st.button("Add Message Pair", key='add_second_prompt'):
-        if st.session_state.second_prompt_count < max_message_pairs:
-            st.session_state.second_prompt_count += 1
+    if st.button("Add Message Pair", key='add_prompt_exp'):
+        if st.session_state.prompt_count_exp < max_message_pairs:
+            st.session_state.prompt_count_exp += 1
 
     # Loop to display prompt and response inputs
-    for i in range(1, st.session_state.second_prompt_count + 1):
-        # Display the response for the previous prompt
+    for i in range(1, st.session_state.prompt_count_exp + 1):
         if i > 1:
-            st.text_area(f"Experimental Response {i-1}", key=f'second_assistant_msg_{i-1}', height=70)
+            st.text_area(f"Experimental Response {i-1}", key=f'assistant_msg_exp_{i-1}', height=70)
 
         st.text_area(f"Experimental Prompt {i}",
                      value=default_experimental_prompt if i == 1 else "",
-                     key=f'second_user_msg_{i}',
+                     key=f'user_msg_exp_{i}',
                      height=70)
 
     # Evaluation Rubric for experimental messages
@@ -264,8 +261,8 @@ def run_analysis(
     openai_api_key,
     anthropic_api_key,
     gemini_api_key,
-    first_messages,
-    second_messages,
+    messages_ctrl,
+    messages_exp,
     control_rating_prompt_template,
     experimental_rating_prompt_template,
     number_of_iterations,
@@ -276,10 +273,10 @@ def run_analysis(
     analyze_length,
     show_raw_results
 ):
-    if not first_messages:
+    if not messages_ctrl:
         st.error("Please provide at least one message for the control prompt.")
         return
-    if not second_messages:
+    if not messages_exp:
         st.error("Please provide at least one message for the experimental prompt.")
         return
 
@@ -302,21 +299,21 @@ def run_analysis(
     status = st.empty()
 
     status.text("Analyzing control prompt...")
-    responses1, lengths1, ratings1, rating_texts1, cost1 = get_responses_and_lengths(
-        first_messages, number_of_iterations, settings_response, settings_rating,
+    responses_ctrl, lengths_ctrl, ratings_ctrl, rating_texts_ctrl, cost_ctrl = get_responses_and_lengths(
+        messages_ctrl, number_of_iterations, settings_response, settings_rating,
         control_rating_prompt_template, analyze_length
     )
 
     status.text("Analyzing experimental prompt...")
-    responses2, lengths2, ratings2, rating_texts2, cost2 = get_responses_and_lengths(
-        second_messages, number_of_iterations, settings_response, settings_rating,
+    responses_exp, lengths_exp, ratings_exp, rating_texts_exp, cost_exp = get_responses_and_lengths(
+        messages_exp, number_of_iterations, settings_response, settings_rating,
         experimental_rating_prompt_template, analyze_length
     )
 
     status.text("Generating analysis...")
     analysis_data, plot_base64, total_cost = generate_analysis(
-        responses1, lengths1, ratings1, cost1,
-        responses2, lengths2, ratings2, cost2,
+        responses_ctrl, lengths_ctrl, ratings_ctrl, cost_ctrl,
+        responses_exp, lengths_exp, ratings_exp, cost_exp,
         analyze_length
     )
 
@@ -327,17 +324,17 @@ def run_analysis(
         analysis_data,
         plot_base64,
         total_cost,
-        first_messages,
-        second_messages,
+        messages_ctrl,
+        messages_exp,
         control_rating_prompt_template,
         experimental_rating_prompt_template,
         show_raw_results=show_raw_results,
-        responses1=responses1,
-        responses2=responses2,
-        ratings1=ratings1,
-        ratings2=ratings2,
-        rating_texts1=rating_texts1,
-        rating_texts2=rating_texts2
+        responses_ctrl=responses_ctrl,
+        responses_exp=responses_exp,
+        ratings_ctrl=ratings_ctrl,
+        ratings_exp=ratings_exp,
+        rating_texts_ctrl=rating_texts_ctrl,
+        rating_texts_exp=rating_texts_exp
     )
 
     st.download_button(
@@ -353,31 +350,35 @@ def run_analysis(
 # Run Analysis button with a unique key
 if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     # Collect the messages
-    first_messages = []
-    for i in range(1, st.session_state.first_prompt_count + 1):
-        user_msg = st.session_state.get(f'first_user_msg_{i}', '').strip()
-        assistant_msg = st.session_state.get(f'first_assistant_msg_{i-1}', '').strip() if i > 1 else ''
+    messages_ctrl = []
+    for i in range(1, st.session_state.prompt_count_ctrl + 1):
+        user_msg = st.session_state.get(f'user_msg_ctrl_{i}', '').strip()
         if user_msg:
-            first_messages.append({"role": "user", "content": user_msg})
-        if assistant_msg:
-            first_messages.append({"role": "assistant", "content": assistant_msg})
+            messages_ctrl.append({"role": "user", "content": user_msg})
+            # Append the corresponding assistant message if it exists
+            if i > 1:
+                assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
+                if assistant_msg:
+                    messages_ctrl.insert(-1, {"role": "assistant", "content": assistant_msg})
 
-    second_messages = []
-    for i in range(1, st.session_state.second_prompt_count + 1):
-        user_msg = st.session_state.get(f'second_user_msg_{i}', '').strip()
-        assistant_msg = st.session_state.get(f'second_assistant_msg_{i-1}', '').strip() if i > 1 else ''
+    messages_exp = []
+    for i in range(1, st.session_state.prompt_count_exp + 1):
+        user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
         if user_msg:
-            second_messages.append({"role": "user", "content": user_msg})
-        if assistant_msg:
-            second_messages.append({"role": "assistant", "content": assistant_msg})
+            messages_exp.append({"role": "user", "content": user_msg})
+            # Append the corresponding assistant message if it exists
+            if i > 1:
+                assistant_msg = st.session_state.get(f'assistant_msg_exp_{i-1}', '').strip()
+                if assistant_msg:
+                    messages_exp.insert(-1, {"role": "assistant", "content": assistant_msg})
 
-    # Run the analysis
+    # Run the analysis with updated variable names
     run_analysis(
         openai_api_key,
         anthropic_api_key,
         gemini_api_key,
-        first_messages,
-        second_messages,
+        messages_ctrl,
+        messages_exp,
         control_rating_prompt_template,
         experimental_rating_prompt_template,
         number_of_iterations,
