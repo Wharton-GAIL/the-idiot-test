@@ -55,13 +55,12 @@ def get_api_key(cookie_name):
         return value
 
 # Complete any missing assistant responses in one conversation by submitting the conversation up to that point to the AI model.
-def get_responses(messages, settings_response):
+def get_responses(messages, settings_response, system_prompt=None):
     total_steps = len(messages)
     logger.info(f"Fetching responses for {total_steps} messages:")
     logger.info(messages)
     completed_messages = []
     
-    # Remove the progress bar from here since we'll use the one from the calling function
     for i, message in enumerate(messages):
         if message['role'] == 'user':
             completed_messages.append(message)
@@ -69,10 +68,10 @@ def get_responses(messages, settings_response):
             if message['content'].strip():
                 completed_messages.append(message)
             else:
-                response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
+                response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True, system_prompt=system_prompt)
                 completed_messages.append({"role": "assistant", "content": response})
     
-    response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
+    response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True, system_prompt=system_prompt)
     completed_messages.append({"role": "assistant", "content": response})
     
     return completed_messages
@@ -166,6 +165,15 @@ with col1:
     if 'prompt_count_ctrl' not in st.session_state:
         st.session_state.prompt_count_ctrl = 1
 
+    # Add system message field for control
+    control_system_message = st.text_area(
+        "System Message (Control)",
+        value="",
+        key='system_msg_ctrl',
+        height=70,
+        help="Optional system message to set the behavior of the AI overall. Example: 'Be terse. This is serious."
+    )
+
     if st.button("Add Message Pair", key='add_prompt_ctrl'):
         if st.session_state.prompt_count_ctrl < max_message_pairs:
             st.session_state.prompt_count_ctrl += 1
@@ -194,6 +202,15 @@ with col2:
     st.header("Experimental Message")
     if 'prompt_count_exp' not in st.session_state:
         st.session_state.prompt_count_exp = 1
+
+    # Add system message field for experiment
+    experiment_system_message = st.text_area(
+        "System Message (Experiment)",
+        value="",
+        key='system_msg_exp',
+        height=70,
+        help="Optional system message to set the behavior for experiment messages."
+    )
 
     if st.button("Add Message Pair", key='add_prompt_exp'):
         if st.session_state.prompt_count_exp < max_message_pairs:
@@ -238,7 +255,8 @@ def run_analysis(
     messages_ctrl_original, messages_exp_original,
     control_rating_prompt_template, experiment_rating_prompt_template,
     number_of_iterations, model_response, temperature_response,
-    model_rating, temperature_rating, analyze_length, show_transcripts
+    model_rating, temperature_rating, analyze_length, show_transcripts,
+    control_system_message=None, experiment_system_message=None
 ):
     if not messages_ctrl_original:
         st.error("Please provide at least one message for the control prompt.")
@@ -283,7 +301,7 @@ def run_analysis(
             status.progress(progress)
 
             # Get responses using get_responses
-            updated_messages_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response)
+            updated_messages_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
             last_response_ctrl = updated_messages_ctrl[-1]['content']
 
             # Rate the response
@@ -319,7 +337,7 @@ def run_analysis(
             status.progress(progress)
 
             # Get responses using get_responses
-            updated_messages_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response)
+            updated_messages_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
             last_response_exp = updated_messages_exp[-1]['content']
 
             # Rate the response
@@ -461,5 +479,7 @@ if st.button("Run Analysis", key="run_analysis_button", type="primary"):
             model_rating,
             temperature_rating,
             analyze_length,
-            show_transcripts
+            show_transcripts,
+            control_system_message=control_system_message,
+            experiment_system_message=experiment_system_message
         )
