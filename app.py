@@ -1,10 +1,4 @@
 import streamlit as st
-import openai
-import matplotlib.pyplot as plt
-import numpy as np
-import io
-import base64
-import statistics
 import re
 from datetime import datetime
 import extra_streamlit_components as stx
@@ -66,30 +60,21 @@ def get_responses(messages, settings_response):
     logger.info(f"Fetching responses for {total_steps} messages:")
     logger.info(messages)
     completed_messages = []
-    progress_bar = st.progress(0, text=f"Fetching responses for {total_steps} messages...")
     
-    # If there are any responses that are blank, fetch them
+    # Remove the progress bar from here since we'll use the one from the calling function
     for i, message in enumerate(messages):
-        progress = (i + 1) / total_steps
-        progress_bar.progress(progress)
-        
         if message['role'] == 'user':
-            # Always add user messages
             completed_messages.append(message)
         elif message['role'] == 'assistant':
             if message['content'].strip():
-                # Add non-blank assistant messages as-is
                 completed_messages.append(message)
             else:
-                # Replace blank assistant messages with a new response
                 response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
                 completed_messages.append({"role": "assistant", "content": response})
     
-    # Finally, add the last response
     response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
     completed_messages.append({"role": "assistant", "content": response})
     
-    progress_bar.empty()
     return completed_messages
 
 # Sidebar settings
@@ -170,12 +155,6 @@ temperature_rating = st.sidebar.slider(
 
 # Initialize message counts
 max_message_pairs = 5
-
-if 'message_count_ctrl' not in st.session_state:
-    st.session_state.message_count_ctrl = 1
-
-if 'message_count_exp' not in st.session_state:
-    st.session_state.message_count_exp = 1
 
 # Main area for prompts
 col1, col2 = st.columns(2)

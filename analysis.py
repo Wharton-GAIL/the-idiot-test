@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tabulate import tabulate
 
-from call_gpt import call_gpt
-
 def generate_analysis(
     responses_ctrl, lengths_ctrl, ratings_ctrl, cost_ctrl,
     responses_exp, lengths_exp, ratings_exp, cost_exp,
