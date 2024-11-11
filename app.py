@@ -350,8 +350,8 @@ def run_analysis(
     # Display the HTML report in Streamlit
     st.components.v1.html(html_report, height=1000, scrolling=True)
 
-# Run Analysis button
-if st.button("Run Analysis"):
+# Run Analysis button with a unique key
+if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     # Collect the messages
     first_messages = []
     for i in range(1, st.session_state.first_prompt_count + 1):
