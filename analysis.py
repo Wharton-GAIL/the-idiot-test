@@ -83,34 +83,78 @@ def generate_analysis(
 
     return analysis_data, plot_base64, total_cost
 
-def construct_conversation_html(prompts, responses = None):
+def construct_conversation_html(prompts, responses=None):
     conversation = []
-    print("Prompts: "+str(prompts)+"\n\n")
-    print("Responses: "+str(responses)+"\n\n")
-    if prompts:
-        for msg in prompts:
-            emoji = '🧑' if msg['role'] == 'user' else '🤖'
-            conversation.append(f"{emoji} {msg['content']}")
-    if responses:
-        for user_prompt, assistant_response in zip(prompts, responses):
-            conversation.append(f"🧑 {user_prompt}")
-            conversation.append(f"🤖 {assistant_response}")
-    
-    # Join with double line breaks for readability
+    if responses is None:
+        responses = []
+
+    user_messages = [msg['content'] for msg in prompts if msg['role'] == 'user']
+    assistant_messages = [msg['content'] for msg in prompts if msg['role'] == 'assistant']
+
+    max_length = max(len(user_messages), len(assistant_messages))
+
+    for i in range(max_length):
+        # User message
+        if i < len(user_messages):
+            user_msg = user_messages[i]
+            conversation.append(f"🧑 {user_msg}")
+        # Assistant message
+        if i < len(assistant_messages):
+            assistant_msg = assistant_messages[i]
+            if assistant_msg.strip():
+                conversation.append(f"🤖 {assistant_msg}")
+            else:
+                conversation.append(f"🤖 [wait for reply]")
+        else:
+            conversation.append(f"🤖 [wait for reply]")
+
+    # Join with line breaks for readability
     conversation_html = ('<br>').join(conversation)
     return conversation_html
 
 def create_html_report(
-    analysis_data, plot_base64, total_cost, messages_ctrl, messages_exp,
-    control_rating_prompt_template, experimental_rating_prompt_template,
-    show_raw_results=False, responses_ctrl=None, responses_exp=None,
-    ratings_ctrl=None, ratings_exp=None, rating_texts_ctrl=None, rating_texts_exp=None,
-    model_response=None, model_rating=None, temperature_response=None, temperature_rating=None
+    analysis_data,
+    plot_base64,
+    total_cost,
+    messages_ctrl_original,
+    messages_exp_original,
+    messages_ctrl_modified,
+    messages_exp_modified,
+    control_rating_prompt_template,
+    experimental_rating_prompt_template,
+    show_transcripts=False,
+    responses_ctrl=None,
+    responses_exp=None,
+    ratings_ctrl=None,
+    ratings_exp=None,
+    rating_texts_ctrl=None,
+    rating_texts_exp=None,
+    model_response=None,
+    model_rating=None,
+    temperature_response=None,
+    temperature_rating=None,
 ):
-    # Ensure that iteration prompts and responses are lists
-    responses_ctrl = responses_ctrl or []
-    responses_exp = responses_exp or []
-    
+    # Construct HTML for original prompts
+    def extract_user_messages(messages):
+        conversation = []
+        for msg in messages:
+            if msg['role'] == 'user':
+                conversation.append(f"🧑 {msg['content']}")
+            elif msg['role'] == 'assistant':
+                # Including assistant messages if needed
+                conversation.append(f"🤖 {msg['content']}")
+        conversation_html = ('<br>').join(conversation)
+        return conversation_html
+
+    original_prompts_html = f"""
+    <div class="config-section">
+        <h3>Original Control Prompts</h3>
+        {extract_user_messages(messages_ctrl_original)}
+        <h3>Original Experimental Prompts</h3>
+        {extract_user_messages(messages_exp_original)}
+    </div>
+    """
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -149,6 +193,9 @@ def create_html_report(
                 font-weight: bold;
                 color: #555;
             }}
+            .config-section {{
+                margin-bottom: 40px;
+            }}
         </style>
     </head>
     <body>
@@ -161,24 +208,8 @@ def create_html_report(
             <p><strong>Response Temperature:</strong> {temperature_response}</p>
             <p><strong>Rating Model:</strong> {model_rating}</p>
             <p><strong>Rating Temperature:</strong> {temperature_rating}</p>
-            <div class="config-columns">
-                <div class="config-column">
-                    <h3>Control Messages</h3>
-                    <div class="response-box">
-                        {construct_conversation_html(prompts=messages_ctrl)}
-                    </div>
-                    <h4>Control Rating Prompt</h4>
-                    <div class="response-box">🧑 {control_rating_prompt_template}</div>
-                </div>
-                <div class="config-column">
-                    <h3>Experimental Messages</h3>
-                    <div class="response-box">
-                        {construct_conversation_html(prompts=messages_exp)}
-                    </div>
-                    <h4>Experimental Rating Prompt</h4>
-                    <div class="response-box">🧑 {experimental_rating_prompt_template}</div>
-                </div>
-            </div>
+            <!-- Insert Original Prompts -->
+            {original_prompts_html}
         </div>
 
         <h2>Cost Analysis</h2>
@@ -190,10 +221,10 @@ def create_html_report(
         <h2>Visualizations</h2>
         <img src="data:image/png;base64,{plot_base64}" alt="Research Plots" style="max-width: 100%;">
     """
-
-    if show_raw_results and all([responses_ctrl, responses_exp, ratings_ctrl, ratings_exp]):
+    
+    if show_transcripts and all([responses_ctrl, responses_exp, ratings_ctrl, ratings_exp]):
         html_content += """
-        <h2>Raw Results</h2>
+        <h2>Transcripts</h2>
         """
 
         num_iterations = len(responses_ctrl)
@@ -203,19 +234,19 @@ def create_html_report(
             <h3>Iteration {idx + 1}</h3>
             """
 
+            # Control conversation
             html_content += """
-            <h4>Control Reply</h4>
+            <h4>Control Conversation</h4>
             """
-
-            if idx < len(responses_ctrl):
-                html_content += f"""
-                <div class="response-box">🤖 {responses_ctrl[idx]}</div>
-                """
-            else:
-                html_response = "N/A"
-                html_content += f"""
-                <div class="response-box">🤖 {html_response}</div>
-                """
+            for msg in messages_ctrl_modified[idx]:
+                if msg['role'] == 'user':
+                    html_content += f"""
+                    <div class="response-box">🧑 {msg['content']}</div>
+                    """
+                elif msg['role'] == 'assistant':
+                    html_content += f"""
+                    <div class="response-box">🤖 {msg['content']}</div>
+                    """
 
             if ratings_ctrl and idx < len(ratings_ctrl) and rating_texts_ctrl and idx < len(rating_texts_ctrl):
                 html_content += f"""
@@ -228,19 +259,19 @@ def create_html_report(
                 <div class="response-box">🤖 N/A</div>
                 """
 
+            # Experimental conversation
             html_content += """
-            <h4>Experimental Reply</h4>
+            <h4>Experimental Conversation</h4>
             """
-
-            if idx < len(responses_exp):
-                html_content += f"""
-                <div class="response-box">🤖 {responses_exp[idx]}</div>
-                """
-            else:
-                html_response = "N/A"
-                html_content += f"""
-                <div class="response-box">🤖 {html_response}</div>
-                """
+            for msg in messages_exp_modified[idx]:
+                if msg['role'] == 'user':
+                    html_content += f"""
+                    <div class="response-box">🧑 {msg['content']}</div>
+                    """
+                elif msg['role'] == 'assistant':
+                    html_content += f"""
+                    <div class="response-box">🤖 {msg['content']}</div>
+                    """
 
             if ratings_exp and idx < len(ratings_exp) and rating_texts_exp and idx < len(rating_texts_exp):
                 html_content += f"""

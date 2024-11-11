@@ -10,9 +10,12 @@ from datetime import datetime
 import extra_streamlit_components as stx
 import matplotlib
 import os
+import copy
 
 from call_gpt import call_gpt
-
+from log_love import setup_logging
+logger = None
+logger = setup_logging(logger)
 from analysis import generate_analysis, create_html_report
 
 # For the plots to display correctly in Streamlit
@@ -56,6 +59,38 @@ def get_api_key(cookie_name):
         return ""
     else:
         return value
+
+# Complete any missing assistant responses in one conversation by submitting the conversation up to that point to the AI model.
+def get_responses(messages, settings_response):
+    total_steps = len(messages)
+    logger.info(f"Fetching responses for {total_steps} messages:")
+    logger.info(messages)
+    completed_messages = []
+    progress_bar = st.progress(0, text=f"Fetching responses for {total_steps} messages...")
+    
+    # If there are any responses that are blank, fetch them
+    for i, message in enumerate(messages):
+        progress = (i + 1) / total_steps
+        progress_bar.progress(progress)
+        
+        if message['role'] == 'user':
+            # Always add user messages
+            completed_messages.append(message)
+        elif message['role'] == 'assistant':
+            if message['content'].strip():
+                # Add non-blank assistant messages as-is
+                completed_messages.append(message)
+            else:
+                # Replace blank assistant messages with a new response
+                response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
+                completed_messages.append({"role": "assistant", "content": response})
+    
+    # Finally, add the last response
+    response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True)
+    completed_messages.append({"role": "assistant", "content": response})
+    
+    progress_bar.empty()
+    return completed_messages
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -125,7 +160,7 @@ model_rating = st.sidebar.selectbox(
 
 # Checkboxes for analysis options
 analyze_length = st.sidebar.checkbox("Analyze length of response", value=False)
-show_raw_results = st.sidebar.checkbox("Add a table of all responses", value=True)
+show_transcripts = st.sidebar.checkbox("Add a table of all responses", value=True)
 
 # Temperature for rating
 temperature_rating = st.sidebar.slider(
@@ -145,7 +180,7 @@ if 'message_count_exp' not in st.session_state:
 # Main area for prompts
 col1, col2 = st.columns(2)
 default_control_prompt = "Call me an idiot."
-default_experimental_prompt = "Call me a bozo."
+default_experiment_prompt = "Call me a bozo."
 
 with col1:
     st.header("Control Message")
@@ -159,14 +194,14 @@ with col1:
     # Loop to display prompt and response inputs
     for i in range(1, st.session_state.prompt_count_ctrl + 1):
         if i > 1:
-            st.text_area(f"Control Response {i-1}", key=f'assistant_msg_ctrl_{i-1}', height=70)
+            st.text_area(f"Response {i-1} (Control)", key=f'assistant_msg_ctrl_{i-1}', height=70)
 
-        st.text_area(f"Control Prompt {i}",
+        st.text_area(f"Prompt {i} (Control)",
                      value=default_control_prompt if i == 1 else "",
                      key=f'user_msg_ctrl_{i}',
                      height=70)
 
-    # Evaluation Rubric for control messages
+    # Evaluation Rubric for control messages. MAKE SURE TO INCLUDE {{response}} IN THE PROMPT. The double curly braces are important!!!
     control_rating_prompt_template = st.text_area(
         "Evaluation Rubric for Control Messages",
         value="""I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
@@ -177,7 +212,7 @@ with col1:
     )
 
 with col2:
-    st.header("Experimental Message")
+    st.header("experiment Message")
     if 'prompt_count_exp' not in st.session_state:
         st.session_state.prompt_count_exp = 1
 
@@ -188,24 +223,22 @@ with col2:
     # Loop to display prompt and response inputs
     for i in range(1, st.session_state.prompt_count_exp + 1):
         if i > 1:
-            st.text_area(f"Experimental Response {i-1}", key=f'assistant_msg_exp_{i-1}', height=70)
+            st.text_area(f"Response {i-1} (Experiment)", key=f'assistant_msg_exp_{i-1}', height=70)
 
-        st.text_area(f"Experimental Prompt {i}",
-                     value=default_experimental_prompt if i == 1 else "",
+        st.text_area(f"Prompt {i} (Experiment)",
+                     value=default_experiment_prompt if i == 1 else "",
                      key=f'user_msg_exp_{i}',
                      height=70)
 
-    # Evaluation Rubric for experimental messages
-    experimental_rating_prompt_template = st.text_area(
-        "Evaluation Rubric for Experimental Messages",
+    # Evaluation Rubric for experiment messages
+    experiment_rating_prompt_template = st.text_area(
+        "Evaluation Rubric for experiment Messages",
         value="""I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
 {response}""",
         height=200,
-        key='experimental_rating_prompt_template',
-        help="Template used by the model to rate the responses for the experimental prompt."
+        key='experiment_rating_prompt_template',
+        help="Template used by the model to rate the responses for the experiment prompt."
     )
-
-# Moved Functions Start Here
 
 def get_rating_prompt(response, rating_prompt_template):
     return rating_prompt_template.format(response=response)
@@ -221,65 +254,21 @@ def rate_response(response, settings_rating, rating_prompt_template):
         return rating, rating_cost, rating_response
     return None, rating_cost, rating_response
 
-def get_responses_and_lengths(
-    messages, n, settings_response, settings_rating, rating_prompt_template, analyze_length=True
-):
-    lengths = []
-    responses = []
-    ratings = []
-    rating_texts = []
-    total_cost = 0
-
-    progress_bar = st.progress(0)
-
-    for i in range(n):
-        try:
-            progress = (i + 1) / n
-            progress_bar.progress(progress)
-
-            response, cost = call_gpt(messages, settings=settings_response, return_pricing=True)
-            rating, rating_cost, rating_text = rate_response(response, settings_rating, rating_prompt_template)
-            if rating is not None:
-                total_cost += cost + rating_cost
-                responses.append(response)
-                if analyze_length:
-                    lengths.append(len(response))
-                else:
-                    lengths.append(None)
-                ratings.append(rating)
-                rating_texts.append(rating_text)
-            else:
-                st.error(f"Failed to extract rating for iteration {i+1}.")
-        except Exception as e:
-            st.error(f"Error in iteration {i+1}: {e}")
-
-    progress_bar.empty()
-
-    return responses, lengths, ratings, rating_texts, total_cost
-
 def run_analysis(
-    openai_api_key,
-    anthropic_api_key,
-    gemini_api_key,
-    messages_ctrl,
-    messages_exp,
-    control_rating_prompt_template,
-    experimental_rating_prompt_template,
-    number_of_iterations,
-    model_response,
-    temperature_response,
-    model_rating,
-    temperature_rating,
-    analyze_length,
-    show_raw_results
+    openai_api_key, anthropic_api_key, gemini_api_key,
+    messages_ctrl_original, messages_exp_original,
+    control_rating_prompt_template, experiment_rating_prompt_template,
+    number_of_iterations, model_response, temperature_response,
+    model_rating, temperature_rating, analyze_length, show_transcripts
 ):
-    if not messages_ctrl:
+    if not messages_ctrl_original:
         st.error("Please provide at least one message for the control prompt.")
         return
-    if not messages_exp:
-        st.error("Please provide at least one message for the experimental prompt.")
+    if not messages_exp_original:
+        st.error("Please provide at least one message for the experiment prompt.")
         return
 
+    # Settings for response generation
     settings_response = {
         "model": model_response,
         "temperature": float(temperature_response),
@@ -287,48 +276,118 @@ def run_analysis(
         "anthropic_api_key": anthropic_api_key,
         "gemini_api_key": gemini_api_key
     }
-    settings_rating = {
+    # Settings for rating the response
+    settings_rating = settings_response.copy()
+    settings_rating.update({
         "model": model_rating,
         "temperature": float(temperature_rating),
-        "stop_sequences": "]",
-        "openai_api_key": openai_api_key,
-        "anthropic_api_key": anthropic_api_key,
-        "gemini_api_key": gemini_api_key
-    }
+        "stop_sequences": "]"
+    })
 
     status = st.empty()
 
-    status.text("Analyzing control prompt...")
-    responses_ctrl, lengths_ctrl, ratings_ctrl, rating_texts_ctrl, cost_ctrl = get_responses_and_lengths(
-        messages_ctrl, number_of_iterations, settings_response, settings_rating,
-        control_rating_prompt_template, analyze_length
-    )
+    # Initialize lists to store per-iteration messages
+    messages_ctrl_per_iteration = []
+    messages_exp_per_iteration = []
 
-    status.text("Analyzing experimental prompt...")
-    responses_exp, lengths_exp, ratings_exp, rating_texts_exp, cost_exp = get_responses_and_lengths(
-        messages_exp, number_of_iterations, settings_response, settings_rating,
-        experimental_rating_prompt_template, analyze_length
-    )
+    # Process Control Messages
+    status.text("Analyzing control prompt...")
+    responses_ctrl = []
+    lengths_ctrl = []
+    ratings_ctrl = []
+    rating_texts_ctrl = []
+    total_cost_ctrl = 0
+
+    for i in range(number_of_iterations):
+        try:
+            progress = (i + 1) / number_of_iterations
+            status.progress(progress)
+
+            # Get responses using get_responses
+            updated_messages_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response)
+            last_response_ctrl = updated_messages_ctrl[-1]['content']
+
+            # Rate the response
+            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
+            # Store rating & length
+            if rating_ctrl is not None:
+                total_cost_ctrl += rating_cost_ctrl
+                responses_ctrl.append(last_response_ctrl)
+                if analyze_length:
+                    lengths_ctrl.append(len(last_response_ctrl))
+                else:
+                    lengths_ctrl.append(None)
+                ratings_ctrl.append(rating_ctrl)
+                rating_texts_ctrl.append(rating_text_ctrl)
+                # Store the entire conversation for this iteration
+                messages_ctrl_per_iteration.append(updated_messages_ctrl)
+            else:
+                st.error(f"Failed to extract rating for control iteration {i+1}.")
+        except Exception as e:
+            st.error(f"Error in control iteration {i+1}: {e}")
+
+    # Process experiment Messages
+    status.text("Analyzing experiment prompt...")
+    responses_exp = []
+    lengths_exp = []
+    ratings_exp = []
+    rating_texts_exp = []
+    total_cost_exp = 0
+
+    for i in range(number_of_iterations):
+        try:
+            progress = (i + 1) / number_of_iterations
+            status.progress(progress)
+
+            # Get responses using get_responses
+            updated_messages_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response)
+            last_response_exp = updated_messages_exp[-1]['content']
+
+            # Rate the response
+            rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
+            if rating_exp is not None:
+                total_cost_exp += rating_cost_exp
+                responses_exp.append(last_response_exp)
+                if analyze_length:
+                    lengths_exp.append(len(last_response_exp))
+                else:
+                    lengths_exp.append(None)
+                ratings_exp.append(rating_exp)
+                rating_texts_exp.append(rating_text_exp)
+                # Store the entire conversation for this iteration
+                messages_exp_per_iteration.append(updated_messages_exp)
+            else:
+                st.error(f"Failed to extract rating for experiment iteration {i+1}.")
+        except Exception as e:
+            st.error(f"Error in experiment iteration {i+1}: {e}")
 
     status.text("Generating analysis...")
     analysis_data, plot_base64, total_cost = generate_analysis(
-        responses_ctrl, lengths_ctrl, ratings_ctrl, cost_ctrl,
-        responses_exp, lengths_exp, ratings_exp, cost_exp,
-        analyze_length
+        responses_ctrl,
+        lengths_ctrl,
+        ratings_ctrl,
+        total_cost_ctrl,
+        responses_exp,
+        lengths_exp,
+        ratings_exp,
+        total_cost_exp,
+        analyze_length,
     )
 
     status.empty()
 
-    # Generate the HTML report
+    # Generate the HTML report with both original and modified messages
     html_report = create_html_report(
         analysis_data,
         plot_base64,
         total_cost,
-        messages_ctrl,
-        messages_exp,
+        messages_ctrl_original,
+        messages_exp_original,
+        messages_ctrl_per_iteration,
+        messages_exp_per_iteration,
         control_rating_prompt_template,
-        experimental_rating_prompt_template,
-        show_raw_results=show_raw_results,
+        experiment_rating_prompt_template,
+        show_transcripts=show_transcripts,
         responses_ctrl=responses_ctrl,
         responses_exp=responses_exp,
         ratings_ctrl=ratings_ctrl,
@@ -338,7 +397,7 @@ def run_analysis(
         model_response=model_response,
         model_rating=model_rating,
         temperature_response=temperature_response,
-        temperature_rating=temperature_rating
+        temperature_rating=temperature_rating,
     )
 
     st.download_button(
@@ -351,57 +410,77 @@ def run_analysis(
     # Display the HTML report in Streamlit
     st.components.v1.html(html_report, height=1000, scrolling=True)
 
-# Run Analysis button with a unique key
+# Run Analysis Streamlit UI
 if st.button("Run Analysis", key="run_analysis_button", type="primary"):
-    # Collect the messages
-    messages_ctrl = []
     has_empty_prompt = False
-    
+
+    # Check control prompts for empty fields
     for i in range(1, st.session_state.prompt_count_ctrl + 1):
-        user_msg = st.session_state.get(f'user_msg_ctrl_{i}', '').strip()
-        if not user_msg:  # Check if prompt is empty after stripping
+        if not st.session_state.get(f'user_msg_ctrl_{i}', '').strip():
             has_empty_prompt = True
             break
-            
-        messages_ctrl.append({"role": "user", "content": user_msg})
-        # Append the corresponding assistant message if it exists
-        if i > 1:
-            assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
-            if assistant_msg:  # Only append if response exists and isn't empty after stripping
-                messages_ctrl.insert(-1, {"role": "assistant", "content": assistant_msg})
 
-    messages_exp = []
-    if not has_empty_prompt:  # Only check experimental if control was valid
+    # Check experiment prompts for empty fields
+    if not has_empty_prompt:
         for i in range(1, st.session_state.prompt_count_exp + 1):
-            user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
-            if not user_msg:  # Check if prompt is empty after stripping
+            if not st.session_state.get(f'user_msg_exp_{i}', '').strip():
                 has_empty_prompt = True
                 break
-                
-            messages_exp.append({"role": "user", "content": user_msg})
-            # Append the corresponding assistant message if it exists
+
+    # Collect the original messages for control
+    messages_ctrl_original = []
+    for i in range(1, st.session_state.prompt_count_ctrl + 1):
+        # First add the assistant message from the previous round if it exists
+        if i > 1:
+            assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
+            assistant_message = {"role": "assistant", "content": assistant_msg}
+            messages_ctrl_original.append(assistant_message)
+        
+        # Then add the user message for this round
+        user_msg = st.session_state.get(f'user_msg_ctrl_{i}', '').strip()
+        user_message = {"role": "user", "content": user_msg}
+        messages_ctrl_original.append(user_message)
+
+    # Collect the original messages for experiment
+    messages_exp_original = []
+    if not has_empty_prompt:
+        for i in range(1, st.session_state.prompt_count_exp + 1):
+            # First add the assistant message from the previous round if it exists
             if i > 1:
                 assistant_msg = st.session_state.get(f'assistant_msg_exp_{i-1}', '').strip()
-                if assistant_msg:  # Only append if response exists and isn't empty after stripping
-                    messages_exp.insert(-1, {"role": "assistant", "content": assistant_msg})
+                assistant_message = {"role": "assistant", "content": assistant_msg}
+                messages_exp_original.append(assistant_message)
+            
+            # Then add the user message for this round
+            user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
+            user_message = {"role": "user", "content": user_msg}
+            messages_exp_original.append(user_message)
 
     if has_empty_prompt:
         st.error("All prompt fields must contain text. Please fill in any empty prompts.")
     else:
-        # Run the analysis with updated variable names
+        settings_response = {
+            "model": model_response,
+            "temperature": float(temperature_response),
+            "openai_api_key": openai_api_key,
+            "anthropic_api_key": anthropic_api_key,
+            "gemini_api_key": gemini_api_key
+        }
+
+        # Run the analysis with both original and modified messages
         run_analysis(
             openai_api_key,
             anthropic_api_key,
             gemini_api_key,
-            messages_ctrl,
-            messages_exp,
+            messages_ctrl_original,
+            messages_exp_original,
             control_rating_prompt_template,
-            experimental_rating_prompt_template,
+            experiment_rating_prompt_template,
             number_of_iterations,
             model_response,
             temperature_response,
             model_rating,
             temperature_rating,
             analyze_length,
-            show_raw_results
+            show_transcripts
         )
