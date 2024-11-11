@@ -139,8 +139,9 @@ def create_html_report(
             if msg['role'] == 'user':
                 conversation.append(f"🧑 {msg['content']}")
             elif msg['role'] == 'assistant':
-                # Including assistant messages if needed
-                conversation.append(f"🤖 {msg['content']}")
+                # Show [AI Responds] for blank assistant messages
+                content = msg['content'].strip()
+                conversation.append(f"🤖 {content if content else '[AI Responds]'}")
         conversation_html = ('<br>').join(conversation)
         return conversation_html
 
