@@ -355,41 +355,53 @@ def run_analysis(
 if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     # Collect the messages
     messages_ctrl = []
+    has_empty_prompt = False
+    
     for i in range(1, st.session_state.prompt_count_ctrl + 1):
         user_msg = st.session_state.get(f'user_msg_ctrl_{i}', '').strip()
-        if user_msg:
-            messages_ctrl.append({"role": "user", "content": user_msg})
-            # Append the corresponding assistant message if it exists
-            if i > 1:
-                assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
-                if assistant_msg:
-                    messages_ctrl.insert(-1, {"role": "assistant", "content": assistant_msg})
+        if not user_msg:  # Check if prompt is empty after stripping
+            has_empty_prompt = True
+            break
+            
+        messages_ctrl.append({"role": "user", "content": user_msg})
+        # Append the corresponding assistant message if it exists
+        if i > 1:
+            assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
+            if assistant_msg:  # Only append if response exists and isn't empty after stripping
+                messages_ctrl.insert(-1, {"role": "assistant", "content": assistant_msg})
 
     messages_exp = []
-    for i in range(1, st.session_state.prompt_count_exp + 1):
-        user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
-        if user_msg:
+    if not has_empty_prompt:  # Only check experimental if control was valid
+        for i in range(1, st.session_state.prompt_count_exp + 1):
+            user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
+            if not user_msg:  # Check if prompt is empty after stripping
+                has_empty_prompt = True
+                break
+                
             messages_exp.append({"role": "user", "content": user_msg})
             # Append the corresponding assistant message if it exists
             if i > 1:
                 assistant_msg = st.session_state.get(f'assistant_msg_exp_{i-1}', '').strip()
-                if assistant_msg:
+                if assistant_msg:  # Only append if response exists and isn't empty after stripping
                     messages_exp.insert(-1, {"role": "assistant", "content": assistant_msg})
 
-    # Run the analysis with updated variable names
-    run_analysis(
-        openai_api_key,
-        anthropic_api_key,
-        gemini_api_key,
-        messages_ctrl,
-        messages_exp,
-        control_rating_prompt_template,
-        experimental_rating_prompt_template,
-        number_of_iterations,
-        model_response,
-        temperature_response,
-        model_rating,
-        temperature_rating,
-        analyze_length,
-        show_raw_results
-    )
+    if has_empty_prompt:
+        st.error("All prompt fields must contain text. Please fill in any empty prompts.")
+    else:
+        # Run the analysis with updated variable names
+        run_analysis(
+            openai_api_key,
+            anthropic_api_key,
+            gemini_api_key,
+            messages_ctrl,
+            messages_exp,
+            control_rating_prompt_template,
+            experimental_rating_prompt_template,
+            number_of_iterations,
+            model_response,
+            temperature_response,
+            model_rating,
+            temperature_rating,
+            analyze_length,
+            show_raw_results
+        )
