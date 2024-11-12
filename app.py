@@ -60,6 +60,7 @@ def get_responses(messages, settings_response, system_prompt=None):
     logger.info(f"Fetching responses for {total_steps} messages:")
     logger.info(messages)
     completed_messages = []
+    total_response_cost = 0.0  # Initialize total response cost
     
     for i, message in enumerate(messages):
         if message['role'] == 'user':
@@ -68,13 +69,26 @@ def get_responses(messages, settings_response, system_prompt=None):
             if message['content'].strip():
                 completed_messages.append(message)
             else:
-                response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True, system_prompt=system_prompt)
+                response, response_cost = call_gpt(
+                    completed_messages,
+                    settings=settings_response,
+                    return_pricing=True,
+                    system_prompt=system_prompt
+                )
                 completed_messages.append({"role": "assistant", "content": response})
+                total_response_cost += response_cost  # Accumulate response cost
     
-    response, _ = call_gpt(completed_messages, settings=settings_response, return_pricing=True, system_prompt=system_prompt)
+    # Final assistant response
+    response, response_cost = call_gpt(
+        completed_messages,
+        settings=settings_response,
+        return_pricing=True,
+        system_prompt=system_prompt
+    )
     completed_messages.append({"role": "assistant", "content": response})
+    total_response_cost += response_cost  # Accumulate final response cost
     
-    return completed_messages
+    return completed_messages, total_response_cost  # Return both messages and cost
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -127,7 +141,7 @@ number_of_iterations = st.sidebar.slider(
 # Model for response generation
 model_response = st.sidebar.selectbox(
     "Model for Response Generation", AVAILABLE_MODELS, index=0,
-    help="Select the OpenAI model for generating responses."
+    help="Select the AI model for generating responses."
 )
 
 # Temperature for response generation
@@ -139,10 +153,11 @@ temperature_response = st.sidebar.slider(
 # Model for rating
 model_rating = st.sidebar.selectbox(
     "Model for Rating", AVAILABLE_MODELS, index=0,
-    help="Select the OpenAI model for rating the responses."
+    help="Select the AI model for rating the responses."
 )
 
 # Checkboxes for analysis options
+analyze_rating = st.sidebar.checkbox("Use AI to analyze ratings", value=True)
 analyze_length = st.sidebar.checkbox("Analyze length of response", value=False)
 show_transcripts = st.sidebar.checkbox("Add a table of all responses", value=True)
 
@@ -189,14 +204,15 @@ with col1:
                      height=70)
 
     # Evaluation Rubric for control messages. MAKE SURE TO INCLUDE {{response}} IN THE PROMPT. The double curly braces are important!!!
-    control_rating_prompt_template = st.text_area(
-        "Evaluation Rubric for Control Messages",
-        value="""I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+    if analyze_rating:
+        control_rating_prompt_template = st.text_area(
+            "Evaluation Rubric for Control Messages",
+            value="""I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
 {response}""",
-        height=200,
-        key='control_rating_prompt_template',
-        help="This prompt will be used to rate the response. It must have {{response}} in it. It must ask for a rating in brackets like [0]."
-    )
+            height=200,
+            key='control_rating_prompt_template',
+            help="This prompt will be used to rate the response. It must have {{response}} in it. It must ask for a rating in brackets like [0]."
+        )
 
 with col2:
     st.header("Experimental Message")
@@ -227,14 +243,15 @@ with col2:
                      height=70)
 
     # Evaluation Rubric for experiment messages
-    experiment_rating_prompt_template = st.text_area(
-        "Evaluation Rubric for experiment Messages",
-        value="""I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+    if analyze_rating:
+        experiment_rating_prompt_template = st.text_area(
+            "Evaluation Rubric for Experiment Messages",
+            value="""I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
 {response}""",
-        height=200,
-        key='experiment_rating_prompt_template',
-        help="Template used by the model to rate the responses for the experiment prompt."
-    )
+            height=200,
+            key='experiment_rating_prompt_template',
+            help="Template used by the model to rate the responses for the experiment prompt."
+        )
 
 def get_rating_prompt(response, rating_prompt_template):
     return rating_prompt_template.format(response=response)
@@ -255,7 +272,7 @@ def run_analysis(
     messages_ctrl_original, messages_exp_original,
     control_rating_prompt_template, experiment_rating_prompt_template,
     number_of_iterations, model_response, temperature_response,
-    model_rating, temperature_rating, analyze_length, show_transcripts,
+    model_rating, temperature_rating, analyze_rating, analyze_length, show_transcripts,
     control_system_message=None, experiment_system_message=None
 ):
     logger.info("Starting analysis run")
@@ -274,14 +291,8 @@ def run_analysis(
         "anthropic_api_key": anthropic_api_key,
         "gemini_api_key": gemini_api_key
     }
-    # Settings for rating the response
-    settings_rating = settings_response.copy()
-    settings_rating.update({
-        "model": model_rating,
-        "temperature": float(temperature_rating),
-        "stop_sequences": "]"
-    })
 
+    # Initialize status
     status = st.empty()
 
     # Initialize lists to store per-iteration messages
@@ -303,29 +314,44 @@ def run_analysis(
             status.progress(progress)
 
             # Get responses using get_responses
-            updated_messages_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
+            updated_messages_ctrl, response_cost_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
             last_response_ctrl = updated_messages_ctrl[-1]['content']
 
-            # Rate the response
-            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
-            # Store rating & length
-            if rating_ctrl is not None:
-                total_cost_ctrl += rating_cost_ctrl
-                responses_ctrl.append(last_response_ctrl)
-                if analyze_length:
-                    lengths_ctrl.append(len(last_response_ctrl))
-                else:
-                    lengths_ctrl.append(None)
-                ratings_ctrl.append(rating_ctrl)
-                rating_texts_ctrl.append(rating_text_ctrl)
-                # Store the entire conversation for this iteration
-                messages_ctrl_per_iteration.append(updated_messages_ctrl)
+            # Store response
+            responses_ctrl.append(last_response_ctrl)
+            # Store length
+            if analyze_length:
+                lengths_ctrl.append(len(last_response_ctrl))
             else:
-                st.error(f"Failed to extract rating for control iteration {i+1}.")
+                lengths_ctrl.append(None)
+
+            # Rate the response if analyze_rating is True
+            if analyze_rating:
+                # Settings for rating the response
+                settings_rating = settings_response.copy()
+                settings_rating.update({
+                    "model": model_rating,
+                    "temperature": float(temperature_rating),
+                    "stop_sequences": "]"
+                })
+
+                rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
+                if rating_ctrl is not None:
+                    total_cost_ctrl += rating_cost_ctrl
+                    ratings_ctrl.append(rating_ctrl)
+                    rating_texts_ctrl.append(rating_text_ctrl)
+                else:
+                    st.error(f"Failed to extract rating for control iteration {i+1}.")
+            else:
+                ratings_ctrl.append(None)
+                rating_texts_ctrl.append(None)
+
+            # Store the entire conversation for this iteration
+            messages_ctrl_per_iteration.append(updated_messages_ctrl)
         except Exception as e:
             st.error(f"Error in control iteration {i+1}: {e}")
 
-    # Process experiment Messages
+    # Process Experimental Messages
     status.text("Analyzing experiment prompt...")
     logger.info(f"Starting experiment analysis for {number_of_iterations} iterations")
     responses_exp = []
@@ -340,29 +366,47 @@ def run_analysis(
             status.progress(progress)
 
             # Get responses using get_responses
-            updated_messages_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
+            updated_messages_exp, response_cost_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
             last_response_exp = updated_messages_exp[-1]['content']
 
-            # Rate the response
-            rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
-            if rating_exp is not None:
-                total_cost_exp += rating_cost_exp
-                responses_exp.append(last_response_exp)
-                if analyze_length:
-                    lengths_exp.append(len(last_response_exp))
-                else:
-                    lengths_exp.append(None)
-                ratings_exp.append(rating_exp)
-                rating_texts_exp.append(rating_text_exp)
-                # Store the entire conversation for this iteration
-                messages_exp_per_iteration.append(updated_messages_exp)
+            # Store response
+            responses_exp.append(last_response_exp)
+            # Store length
+            if analyze_length:
+                lengths_exp.append(len(last_response_exp))
             else:
-                st.error(f"Failed to extract rating for experiment iteration {i+1}.")
+                lengths_exp.append(None)
+
+            # Rate the response if analyze_rating is True
+            if analyze_rating:
+                # Settings for rating the response
+                settings_rating = settings_response.copy()
+                settings_rating.update({
+                    "model": model_rating,
+                    "temperature": float(temperature_rating),
+                    "stop_sequences": "]"
+                })
+
+                rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
+                if rating_exp is not None:
+                    total_cost_exp += rating_cost_exp
+                    ratings_exp.append(rating_exp)
+                    rating_texts_exp.append(rating_text_exp)
+                else:
+                    st.error(f"Failed to extract rating for experiment iteration {i+1}.")
+            else:
+                ratings_exp.append(None)
+                rating_texts_exp.append(None)
+
+            # Store the entire conversation for this iteration
+            messages_exp_per_iteration.append(updated_messages_exp)
         except Exception as e:
             st.error(f"Error in experiment iteration {i+1}: {e}")
 
     status.text("Generating analysis...")
     logger.info("Generating final analysis and plots")
+
+    # Generate analysis data
     analysis_data, plot_base64, total_cost = generate_analysis(
         responses_ctrl,
         lengths_ctrl,
@@ -372,12 +416,13 @@ def run_analysis(
         lengths_exp,
         ratings_exp,
         total_cost_exp,
+        analyze_rating,
         analyze_length,
     )
 
     status.empty()
 
-    # Generate the HTML report with both original and modified messages
+    # Generate the HTML report
     logger.info("Creating HTML report")
     html_report = create_html_report(
         analysis_data,
@@ -389,6 +434,7 @@ def run_analysis(
         messages_exp_per_iteration,
         control_rating_prompt_template,
         experiment_rating_prompt_template,
+        analyze_rating=analyze_rating,
         show_transcripts=show_transcripts,
         responses_ctrl=responses_ctrl,
         responses_exp=responses_exp,
@@ -464,28 +510,21 @@ if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     if has_empty_prompt:
         st.error("All prompt fields must contain text. Please fill in any empty prompts.")
     else:
-        settings_response = {
-            "model": model_response,
-            "temperature": float(temperature_response),
-            "openai_api_key": openai_api_key,
-            "anthropic_api_key": anthropic_api_key,
-            "gemini_api_key": gemini_api_key
-        }
-
-        # Run the analysis with both original and modified messages
+        # Run the analysis
         run_analysis(
             openai_api_key,
             anthropic_api_key,
             gemini_api_key,
             messages_ctrl_original,
             messages_exp_original,
-            control_rating_prompt_template,
-            experiment_rating_prompt_template,
+            control_rating_prompt_template if analyze_rating else None,
+            experiment_rating_prompt_template if analyze_rating else None,
             number_of_iterations,
             model_response,
             temperature_response,
             model_rating,
             temperature_rating,
+            analyze_rating,
             analyze_length,
             show_transcripts,
             control_system_message=control_system_message,
