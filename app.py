@@ -258,6 +258,7 @@ def run_analysis(
     model_rating, temperature_rating, analyze_length, show_transcripts,
     control_system_message=None, experiment_system_message=None
 ):
+    logger.info("Starting analysis run")
     if not messages_ctrl_original:
         st.error("Please provide at least one message for the control prompt.")
         return
@@ -289,6 +290,7 @@ def run_analysis(
 
     # Process Control Messages
     status.text("Analyzing control prompt...")
+    logger.info(f"Starting control analysis for {number_of_iterations} iterations")
     responses_ctrl = []
     lengths_ctrl = []
     ratings_ctrl = []
@@ -325,6 +327,7 @@ def run_analysis(
 
     # Process experiment Messages
     status.text("Analyzing experiment prompt...")
+    logger.info(f"Starting experiment analysis for {number_of_iterations} iterations")
     responses_exp = []
     lengths_exp = []
     ratings_exp = []
@@ -359,6 +362,7 @@ def run_analysis(
             st.error(f"Error in experiment iteration {i+1}: {e}")
 
     status.text("Generating analysis...")
+    logger.info("Generating final analysis and plots")
     analysis_data, plot_base64, total_cost = generate_analysis(
         responses_ctrl,
         lengths_ctrl,
@@ -374,6 +378,7 @@ def run_analysis(
     status.empty()
 
     # Generate the HTML report with both original and modified messages
+    logger.info("Creating HTML report")
     html_report = create_html_report(
         analysis_data,
         plot_base64,
@@ -399,6 +404,7 @@ def run_analysis(
         experiment_system_message=experiment_system_message,
     )
 
+    logger.info("Analysis complete")
     st.download_button(
         label="Download Report as HTML",
         data=html_report,
