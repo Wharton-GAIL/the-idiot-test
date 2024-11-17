@@ -19,8 +19,6 @@ call_gpt sends a query to an LLM and returns a response. Syntax:
 * "n" number of replies
 * "max_tokens" default is the max allowable
 * "min_reply_tokens" default is max_tokens/4
-* "openai_api_key" required for OpenAI API authentication
-* "anthropic_api_key" required for Anthropic API authentication
 - `return_pricing`: If True, returns the cost of the call as a float representing USD
 - `return_dict`: If True, returns the full API response as a dictionary; otherwise, just the reply string. 
 - `functions`: List of dicts specifying function(s) the LLM can call.
@@ -40,7 +38,7 @@ call_gpt sends a query to an LLM and returns a response. Syntax:
 
 import openai
 import tiktoken
-import google.generativeai as google_genai  # pip install google-generativeai
+import google.generativeai as genai # pip install google-generativeai
 from google.generativeai.types.content_types import to_contents
 import google.api_core.exceptions
 import google.auth.exceptions
@@ -64,26 +62,32 @@ if os.name == 'nt':  # Windows
 else:  # Linux
     sys.path.append('../dan-tools')
 from log_love import setup_logging
-
-# Load environment variables from .env file
-load_dotenv()
+from openai_auth import setup_api_key
 
 logger = None
 logger = setup_logging(logger)
 
-# Flag to ensure google_genai is configured only once
-_genai_initialized = False
+load_dotenv()
+openai_api_key = os.getenv('OPENAI_API_KEY')
+if not openai_api_key:
+    openai_api_key = input("Please enter your OpenAI API key: ")
+    os.environ['OPENAI_API_KEY'] = openai_api_key
+    save_api_key = input("Do you want to save the OpenAI API key for future use? (y/n): ").strip().lower()
+    if save_api_key == 'y':
+        with open('.env', 'a') as env_file:
+            env_file.write(f"\nOPENAI_API_KEY={openai_api_key}")
+            logger.info("OpenAI API key saved successfully.")
+    else:
+        logger.info("OpenAI API key not saved.")
 
-def initialize_google_genai():
-    global _genai_initialized
-    if not _genai_initialized:
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            logger.error("GOOGLE_API_KEY environment variable not set.")
-            raise EnvironmentError("GOOGLE_API_KEY environment variable not set.")
-        google_genai.configure(api_key=api_key)
-        _genai_initialized = True
-        logger.info("Google GenAI configured successfully.")
+anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+if not anthropic_api_key:
+    anthropic_api_key = input("Please enter your Anthropic API key: ")
+    os.environ['ANTHROPIC_API_KEY'] = anthropic_api_key
+    
+anthropic_client = Anthropic()
+
+genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
 
 # Define model details. Pricing is per 1M tokens. Rate limits are request/min, but not yet implemented.
 MODELS = {
@@ -154,11 +158,26 @@ def get_tokens(to_tokenize: str, model: str) -> Optional[int]:
     if not isinstance(to_tokenize, str):
         raise ValueError("Input to tokenize must be a string")
     if model.startswith('gemini-'):
-        initialize_google_genai()
-        google_genai_model = google_genai.GenerativeModel(model)
-        return google_genai_model.count_tokens(to_tokenize).total_tokens
+        genai_model = genai.GenerativeModel(model)
+        return genai_model.count_tokens(to_tokenize).total_tokens
     elif model.startswith('claude-'):
-        return anthropic_client.count_tokens(to_tokenize)
+        url = "https://api.anthropic.com/v1/messages/count_tokens"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "token-counting-2024-11-01"
+        }
+        data = {
+            "model": model,
+            "messages": [
+                {"role": "user", "content": to_tokenize}
+            ]
+        }
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result.get('input_tokens')
     elif model.startswith('gpt-') or model.startswith('o1-'):
         try:
             # Map 'o1-' models to 'gpt-4' for tokenization
@@ -177,10 +196,10 @@ def get_tokens(to_tokenize: str, model: str) -> Optional[int]:
     else:
         raise ValueError(f"Invalid model: {model}")
 
+# very helpful: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/how-to/chatgpt?pivots=programming-language-chat-completions
 def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functions: Optional[List[dict]] = None, function_call: Optional[dict] = None, system_prompt: Optional[str] = None) -> int:
     if model.startswith('gemini-'):
-        initialize_google_genai()
-        google_genai_model = google_genai.GenerativeModel(model)
+        genai_model = genai.GenerativeModel(model)
         # Convert messages to Gemini format
         gemini_content = []
         for message in messages:
@@ -192,7 +211,7 @@ def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functio
                 # Handle system messages or any other roles as user messages
                 gemini_content.append({"role": "user", "parts": [{"text": message['content']}]})
         
-        return google_genai_model.count_tokens(gemini_content).total_tokens
+        return genai_model.count_tokens(gemini_content).total_tokens
     
     num_tokens = 0
     for message in messages:
@@ -201,7 +220,7 @@ def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functio
             try:
                 tokens = get_tokens(value, model)
                 if tokens is None:
-                    logger.error("Tokenization failed for the value: {value}")
+                    logger.error(f"Tokenization failed for the value: {value}")
                     continue
                 num_tokens += tokens
             except Exception as e:
@@ -222,7 +241,7 @@ def num_tokens_from_messages(messages: List[Dict[str, str]], model: str, functio
         num_tokens += get_tokens(system_prompt, model)
     
     return num_tokens
-
+#trim messages so that there are at least min_reply_tokens available for responses (based on the model being used).
 def trim_messages(messages: List[Dict[str, str]], model: str, min_reply_tokens: Optional[int] = None, functions: Optional[List[dict]] = None, function_call: Optional[dict] = None, system_prompt: Optional[str] = None) -> List[Dict[str, str]]:
     # Reserve for output 1/4 of input tokens or all of output tokens, whichever is smaller
     if min_reply_tokens is None:
@@ -251,93 +270,18 @@ def trim_messages(messages: List[Dict[str, str]], model: str, min_reply_tokens: 
         )
     return trimmed_messages
 
-def gpt_to_anthropic_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """Convert GPT-style messages to Anthropic format."""
-    anthropic_messages = []
-    for message in messages:
-        if message["role"] == "user":
-            anthropic_messages.append({"role": "user", "content": message["content"]})
-        elif message["role"] == "assistant":
-            anthropic_messages.append({"role": "assistant", "content": message["content"]})
-        elif message["role"] == "system":
-            # Skip system messages as they're handled separately in Anthropic's API
-            continue
-        else:
-            logger.warning(f"Unexpected message role: {message['role']}")
-    return anthropic_messages
-
-def handle_error(e: Exception, model: str) -> bool:
-    """Handle API errors and determine if we should break the retry loop."""
-    error_message = str(e).lower()
-    
-    # Check for rate limit errors
-    if any(phrase in error_message for phrase in ["rate limit", "ratelimit", "too many requests", "429"]):
-        logger.warning(f"Rate limit hit for {model}. Waiting before retry...")
-        return False
-    
-    # Check for timeout errors
-    if isinstance(e, (ReadTimeout, ConnectTimeout, FunctionTimedOut)) or "timeout" in error_message:
-        logger.warning(f"Timeout error for {model}. Will retry...")
-        return False
-    
-    # Check for temporary server errors
-    if any(phrase in error_message for phrase in ["server error", "500", "502", "503", "504"]):
-        logger.warning(f"Server error for {model}. Will retry...")
-        return False
-    
-    # Check for authentication errors
-    if any(phrase in error_message for phrase in ["authentication", "auth", "unauthorized", "401"]):
-        logger.error(f"Authentication error for {model}. Check your API key.")
-        return True
-    
-    # Check for invalid requests
-    if any(phrase in error_message for phrase in ["invalid request", "bad request", "400"]):
-        logger.error(f"Invalid request for {model}. Check your parameters.")
-        return True
-    
-    # Check for model-specific errors
-    if "model" in error_message and any(phrase in error_message for phrase in ["not found", "doesn't exist", "unavailable"]):
-        logger.error(f"Model error for {model}. Check if the model is available.")
-        return True
-    
-    # Check for content policy violations
-    if any(phrase in error_message for phrase in ["content policy", "content filter", "content violation"]):
-        logger.error(f"Content policy violation for {model}.")
-        return True
-    
-    # Default case: log the error and continue retrying
-    logger.warning(f"Unhandled error for {model}: {error_message}")
-    return False
-
-# Initialize Anthropic client
-anthropic_client = None
-
-def init_anthropic(anthropic_api_key: str):
-    global anthropic_client
-    if anthropic_client is None or anthropic_client.api_key != anthropic_api_key:
-        anthropic_client = Anthropic(api_key=anthropic_api_key)
-    return anthropic_client
-
-def send_llm_request(
-    model: str,
-    temperature: float,
-    messages: List[dict],
-    max_tokens: int,
-    n: int,
-    timeout: float,
-    openai_api_key: str,
-    anthropic_api_key: str,
-    stop_sequences: Optional[List[str]] = None,
-    logit_bias: Optional[dict] = None,
-    functions: Optional[List[dict]] = None,
-    function_call: Optional[dict] = None,
-    system_prompt: Optional[str] = None
-) -> dict:
+def send_llm_request(model: str, temperature: float, messages: List[dict], max_tokens: int, n: int, timeout: float, stop_sequences: Optional[List[str]] = None, logit_bias: Optional[dict] = None, functions: Optional[List[dict]] = None, function_call: Optional[dict] = None, system_prompt: Optional[str] = None) -> dict:
     """
     Sends a request to the LLM API.
+    
+    Note: Special handling for 'o1' and 'o1-mini' models:
+    - Uses 'max_completion_tokens' instead of 'max_tokens'
+    - Omits temperature, n, and other unsupported parameters
+    - Does not support functions, function_call, logit_bias, stop_sequences
+    
+    This implementation may need to be updated as 'o1' models support more features.
     """
     if model.startswith('gemini-'):
-        initialize_google_genai()
         # Convert messages to Gemini format
         gemini_content = []
         for message in messages:
@@ -346,15 +290,15 @@ def send_llm_request(
             elif message['role'] == 'assistant':
                 gemini_content.append({"role": "model", "parts": [{"text": message['content']}]})
             else:
-                # Handle system messages or any other roles as user messages
+                logger.error(f"Unexpected message role: {message['role']}. Appending it as a user message.")
                 gemini_content.append({"role": "user", "parts": [{"text": message['content']}]})
 
         # Initialize the Gemini model with the system instruction
-        google_genai_model = google_genai.GenerativeModel(model, system_instruction=system_prompt)
+        genai_model = genai.GenerativeModel(model, system_instruction=system_prompt)
 
-        response = google_genai_model.generate_content(
+        response = genai_model.generate_content(
             gemini_content,
-            generation_config=google.generativeai.types.GenerationConfig(
+            generation_config=genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
                 top_p=0.95,
@@ -362,8 +306,8 @@ def send_llm_request(
                 stop_sequences=stop_sequences
             )
         )
-        prompt_tokens = google_genai_model.count_tokens(gemini_content).total_tokens
-        completion_tokens = google_genai_model.count_tokens(response.text).total_tokens
+        prompt_tokens = genai_model.count_tokens(gemini_content).total_tokens
+        completion_tokens = genai_model.count_tokens(response.text).total_tokens
         total_tokens = prompt_tokens + completion_tokens
 
         return_data = {
@@ -386,7 +330,7 @@ def send_llm_request(
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {openai_api_key}",  # Use the OpenAI API key
+            "Authorization": f"Bearer {openai_api_key}",
         }
         data = {
             "model": model,
@@ -401,7 +345,7 @@ def send_llm_request(
             data["max_tokens"] = max_tokens
             data["temperature"] = temperature
             data["n"] = n
-            # Only include functions, function_call, logit_bias and stop_sequences if they are provided
+            # Only include functions, function_call, logit_bias and stop_sequences in the data dict if they are not empty or None.
             if functions is not None:
                 data["functions"] = functions
             if function_call is not None:
@@ -409,12 +353,11 @@ def send_llm_request(
             if logit_bias is not None:
                 data["logit_bias"] = logit_bias
             if stop_sequences is not None:
-                data["stop"] = stop_sequences  # GPT calls it 'stop' in the settings
+                data["stop"] = stop_sequences # GPT calls it 'stop' in the settings dictionary, even though they call it stop_sequences in the docs
 
         if system_prompt is not None:
             if messages and messages[0]["content"] != system_prompt:
                 messages.insert(0, {"role": "system", "content": system_prompt})
-
     elif model.startswith('claude-'):
         url = "https://api.anthropic.com/v1/messages"
         headers = {
@@ -450,6 +393,86 @@ def send_llm_request(
         logger.warning(f"Error: {e}; Response: {response.text}")
         raise
     return response.json()
+
+def handle_error(error: Exception, model: str) -> bool:
+    gpt_error_messages = {
+        (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
+        openai.APIConnectionError: "API Connection error. Retrying after a brief wait.",
+        openai.APITimeoutError: "API Timeout error. Retrying after a brief wait.",
+        openai.AuthenticationError: "Authentication error. Aborting. Check the API key or token.",
+        openai.BadRequestError: "Bad Request error. Aborting. Check the request parameters.",
+        openai.ConflictError: "Conflict error. Retrying after a brief wait.",
+        openai.InternalServerError: "Internal Server error. Retrying after a brief wait.",
+        openai.NotFoundError: "Not Found error. Aborting. Check the resource ID.",
+        openai.PermissionDeniedError: "Permission Denied error. Aborting. Check the API key, organization ID, and resource ID.",
+        openai.RateLimitError: "Rate Limit error. Retrying after a brief wait.",
+        openai.UnprocessableEntityError: "Unprocessable Entity error. Please try the request again."
+    }
+    claude_error_messages = {
+        (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
+        requests.exceptions.HTTPError: "HTTP error. Retrying after a brief wait.",
+        requests.exceptions.ConnectionError: "Connection error. Retrying after a brief wait.",
+        requests.exceptions.Timeout: "Timeout error. Retrying after a brief wait.",
+        requests.exceptions.TooManyRedirects: "Too Many Redirects error. Aborting. Check the request URL.",
+        requests.exceptions.RequestException: "Request Exception. Aborting. Check the request."
+    }
+    gemini_error_messages = {
+        (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
+        google.api_core.exceptions.InvalidArgument: "Invalid Argument error. Aborting. Check the request parameters.",
+        google.api_core.exceptions.PermissionDenied: "Permission Denied error. Aborting. Check the API key or permissions.",
+        google.api_core.exceptions.ResourceExhausted: "Resource Exhausted error. Retrying after a brief wait.",
+        google.api_core.exceptions.NotFound: "Not Found error. Aborting. Check the resource ID.",
+        google.api_core.exceptions.DeadlineExceeded: "Deadline Exceeded error. Retrying after a brief wait.",
+        google.api_core.exceptions.ServiceUnavailable: "Service Unavailable error. Retrying after a brief wait.",
+        google.api_core.exceptions.InternalServerError: "Internal Server error. Retrying after a brief wait.",
+        google.auth.exceptions.DefaultCredentialsError: "Default Credentials error. Aborting. Check the API key or authentication.",
+        google.api_core.exceptions.RetryError: "Retry error. Retrying after a brief wait.",
+        google.generativeai.types.BlockedPromptException: "Blocked Prompt error. Aborting. The prompt was blocked due to safety reasons.",
+        google.generativeai.types.StopCandidateException: "Stop Candidate error. Aborting. The API responded with an exceptional finish_reason.",
+    }
+    
+    if model.startswith('gpt-') or model.startswith('o1-'):
+        error_messages = gpt_error_messages
+    elif model.startswith('claude-'):
+        error_messages = claude_error_messages
+    elif model.startswith('gemini-'):
+        error_messages = gemini_error_messages
+    else:
+        raise ValueError(f"Unknown model category in handle_error: {model}")
+
+    if isinstance(error, requests.exceptions.HTTPError):
+        response_text = getattr(error.response, 'text', '')
+        if "Output blocked by content filtering policy" in response_text:
+            logger.error(f"Content filtering policy error using {model}: {str(error)}. Aborting.")
+            return True
+
+    for error_type, message in error_messages.items():
+        if isinstance(error, error_type):
+            if "Aborting" in message:
+                logger.error(f"{type(error).__name__} using {model}: {str(error)}. {message}")
+                return True
+            elif "Retrying" in message:
+                logger.warning(f"{type(error).__name__} using {model}: {str(error)}. {message}")
+            else:
+                logger.error(f"{type(error).__name__} using {model}: {str(error)}. {message}")
+            return False
+    logger.error(f"Unhandled {type(error).__name__} using {model}: {str(error)}. Retrying after a brief wait.")
+    return False
+
+def gpt_to_anthropic_messages(gpt_messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    anthropic_messages = []
+    for message in gpt_messages:
+        if message['role'] == 'user':
+            anthropic_messages.append({"role": "user", "content": message['content']})
+        elif message['role'] == 'assistant':
+            anthropic_messages.append({"role": "assistant", "content": message['content']})
+        elif message['role'] == 'system':
+            # Skip system messages as they are handled separately
+            continue
+        else:
+            logger.error(f"Unexpected message role: {message['role']}. Appending it as a user message.")
+            anthropic_messages.append({"role": "user", "content": message['content']})
+    return anthropic_messages
 
 def send_llm_request_with_retries(settings: Dict[str, Any], messages: List[Dict[str, str]], system_prompt: Optional[str] = None) -> Optional[dict]:    
     """
@@ -490,9 +513,7 @@ def send_llm_request_with_retries(settings: Dict[str, Any], messages: List[Dict[
                 messages=messages,
                 max_tokens=local_max_tokens,
                 n=settings.get("n", 1),
-                timeout=timeout,
-                openai_api_key=settings.get("openai_api_key"),  # Pass the OpenAI API key
-                anthropic_api_key=settings.get("anthropic_api_key"),  # Pass the Anthropic API key
+                timeout=(None, timeout),
                 logit_bias=settings.get("logit_bias", None),
                 functions=settings.get("functions", None),
                 function_call=settings.get("function_call", None),
@@ -518,17 +539,14 @@ def send_llm_request_with_retries(settings: Dict[str, Any], messages: List[Dict[
     logger.error(f"Maximum number of attempts ({max_attempts}) reached, last error was {last_error}, giving up.")
     raise last_error
 
-def call_gpt(
-    query: Union[str, List[Dict[str, str]]], 
-    settings: Optional[Dict[str, Any]] = None, 
-    return_pricing: bool = False, 
-    return_dict: bool = False, 
-    functions: Optional[List[dict]] = None, 
-    function_call: Optional[dict] = None, 
-    logit_bias: Optional[dict] = None, 
-    stop_sequences: Optional[List[str]] = None, 
-    system_prompt: Optional[str] = None
-) -> Union[str, Dict[str, Any], Tuple[str, float], Tuple[Dict[str, Any], float]]:
+
+def update_messages(role, content, messages):
+    new_msg = {"role": role, "content": content}
+    messages.append(new_msg)
+
+DEBUG = globals().get("DEBUG", False)
+
+def call_gpt(query: Union[str, List[Dict[str, str]]], settings: Optional[Dict[str, Any]] = None, return_pricing: bool = False, return_dict: bool = False, functions: Optional[List[dict]] = None, function_call: Optional[dict] = None, logit_bias: Optional[dict] = None, stop_sequences: Optional[List[str]] = None, system_prompt: Optional[str] = None) -> Union[str, Dict[str, Any], Tuple[str, float], Tuple[Dict[str, Any], float]]:
     """
     This function prepares the settings and messages for the API call and then calls send_llm_request_with_retries.
     It handles the response from the API and logs the result.
@@ -565,32 +583,15 @@ def call_gpt(
     elif isinstance(query, list):
         messages = query
         # Make sure messages isn't too big, and if so, trim it
-        messages = trim_messages(
-            messages, 
-            local_settings["model"], 
-            local_settings["min_reply_tokens"], 
-            local_settings.get("functions", None), 
-            local_settings.get("function_call", None), 
-            system_prompt
-        )
+        messages = trim_messages(messages, local_settings["model"], local_settings["min_reply_tokens"], local_settings.get("functions", None), local_settings.get("function_call", None), system_prompt)
     else:
         raise ValueError("query is wrong type - must be a string or a message list")
     if not messages:
         raise ValueError("must submit either a string or a message list")
-    msg_tokens = num_tokens_from_messages(
-        messages, 
-        local_settings["model"], 
-        local_settings.get("functions", None), 
-        local_settings.get("function_call", None), 
-        system_prompt
-    )
+    msg_tokens = num_tokens_from_messages(messages, local_settings["model"], local_settings.get("functions", None), local_settings.get("function_call", None), system_prompt)
     logger.debug(f"Sending LLM API query, {msg_tokens} tokens:\n{messages}")
     try:
-        response = send_llm_request_with_retries(
-            local_settings, 
-            messages, 
-            system_prompt
-        )
+        response = send_llm_request_with_retries(local_settings, messages, system_prompt)
     except Exception as e:
         logger.error(f"GPT API query failed with error: {e}")
         raise e
@@ -603,17 +604,7 @@ def call_gpt(
             reply = response["content"][-1]["text"] if response["content"] and response["content"][-1]["type"] == "text" else ""
         else: 
             reply = response['choices'][0]['message']['content'] or ""
-    total_cost = get_cost(
-        local_settings["model"], 
-        num_tokens_from_messages(
-            messages,
-            local_settings["model"], 
-            local_settings.get("functions", None), 
-            local_settings.get("function_call", None), 
-            system_prompt
-        ), 
-        get_tokens(reply, local_settings["model"])
-    )
+    total_cost = get_cost(local_settings["model"], num_tokens_from_messages(messages,local_settings["model"], local_settings.get("functions", None), local_settings.get("function_call", None), system_prompt), get_tokens(reply, local_settings["model"]))
     logger.debug(f"Reply is {get_tokens(reply, local_settings['model'])} tokens using {local_settings['model']} with a total cost of ${total_cost}: \n{reply}")
     if return_pricing:
         if return_dict:
@@ -625,41 +616,89 @@ def call_gpt(
     else:
         return reply
 
+#Ask a yes or no question
+def ask_yes_or_no(prompt: str, settings: Optional[Dict[str, Any]] = None) -> str:
+    #Function to get a one-char 'y' or 'n' response using logit bias.
+    if settings is None:
+        settings = {"model": "gpt-4-turbo"}
+    settings["temperature"] = 0 #override these no matter what
+    settings["max_tokens"] = 1
+
+    if settings["model"].startswith("gpt-"):
+        settings.update({
+            "logit_bias": {88: 100, 77: 100}  # 'y' and 'n' are represented by tokens 88 and 77
+        })
+        response = call_gpt(
+            [ { "role": "user", "content": f"Answer the following question with one character, either y or n:\n{prompt}" } ],
+            settings=settings
+        )
+        return response.lower()
+
+    else:
+        response = call_gpt(
+            [
+                {"role": "user", "content": f"Answer the following question with one character in JSON format, either y or n:\n{prompt}"},
+                {"role": "assistant", "content": '{{"answer": "'}  # Give it all the JSON starter so it just gives you the y or n
+            ],
+            settings=settings
+        )
+        return response.lower()
+
+def main():
+    # Prompt user for query string
+#    query = input("Enter your query > ")
+    query = "Please recite the alphabet in ALL CAPS."
+
+    # Call GPT API
+    settings = {"model": "gpt-4", "temperature": 0.0, "max_tokens": 100}
+    try:
+        response = call_gpt(query, settings=settings)
+    except Exception as e:
+        print("GPT API call failed with error: ", e)
+    else:
+        print("GPT response: ", response)
+
+    # Call Anthropic API
+    settings = {"model": "claude", "temperature": 0.0, "max_tokens": 100}
+    try:
+        response = call_gpt(query, settings=settings)
+    except Exception as e:
+        print("Anthropic API call failed with error: ", e)
+    else:
+        print("Anthropic response: ", response)
+
+    # Call Gemini API
+    settings = {"model": "gemini", "temperature": 0.0, "max_tokens": 100}
+    try:
+        response = call_gpt(query, settings=settings)
+    except Exception as e:
+        print("Gemini API call failed with error: ", e)
+    else:
+        print("Gemini response: ", response)
+
+    # Run tests
+    print("Now running tests...")
+    loader = unittest.defaultTestLoader
+    pattern = f"{os.path.splitext(os.path.basename(__file__))[0]}_tests.py"
+    print(f"Looking for test files matching pattern: {pattern} in directory: {os.path.abspath('.')}")
+    suite = loader.discover(start_dir='.', pattern=pattern)
+
+    print("Discovered test files:")
+    for test_suite in suite:
+        for test_case in test_suite:
+            test_class = test_case.__class__
+            module_name = test_class.__module__
+            module = __import__(module_name)
+            file_path = os.path.abspath(module.__file__)
+            print(f"  - {file_path}")
+
+    runner = unittest.TextTestRunner()
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        raise ValueError("Some of the tests failed, aborting.")
+    else:
+        print("All tests passed!")
+
+
 if __name__ == "__main__":
-    # Example usage
-    settings = {
-        "model": "gpt-4-turbo",
-        "temperature": 0.7,
-        "openai_api_key": "your-openai-api-key-here",  # Add your OpenAI API key here
-        "anthropic_api_key": "your-anthropic-api-key-here"  # Add your Anthropic API key here
-    }
-    
-    # Test basic query
-    response = call_gpt("Hello, how are you?", settings)
-    print(f"Basic response: {response}")
-    
-    # Test with system prompt
-    response = call_gpt(
-        "What color is the sky?",
-        settings,
-        system_prompt="You are a meteorologist. Be scientific in your responses."
-    )
-    print(f"Response with system prompt: {response}")
-    
-    # Test with pricing
-    response, cost = call_gpt(
-        "Tell me a short story.",
-        settings,
-        return_pricing=True
-    )
-    print(f"Response with cost: {response}\nCost: ${cost}")
-    
-    # Test with message history
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "What's your favorite color?"},
-        {"role": "assistant", "content": "I don't have personal preferences, but I can discuss colors!"},
-        {"role": "user", "content": "Tell me about that color."}
-    ]
-    response = call_gpt(messages, settings)
-    print(f"Response with message history: {response}")
+    main()
