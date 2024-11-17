@@ -78,15 +78,28 @@ def generate_analysis(
             plot_idx += 1
 
         if analyze_rating and ratings_ctrl and ratings_exp:
-            for data, color, label in [(ratings_ctrl, 'skyblue', 'Control Prompt'),
-                                       (ratings_exp, 'lightgreen', 'Experimental Prompt')]:
-                max_rating = max(max(ratings_ctrl), max(ratings_exp))
-                hist, bins = np.histogram(data, bins=range(0, int(max_rating) + 2), density=True)
-                bin_centers = (bins[:-1] + bins[1:]) / 2
-                axs[plot_idx].fill_between(bin_centers, hist, alpha=0.5, color=color, label=label)
+            max_rating = max(max(ratings_ctrl), max(ratings_exp))
+            bins = np.arange(0, int(max_rating) + 2)  # +2 to include the max value
+            
+            # Calculate histograms
+            hist_ctrl, _ = np.histogram(ratings_ctrl, bins=bins)
+            hist_exp, _ = np.histogram(ratings_exp, bins=bins)
+            
+            # Normalize to get proportions
+            hist_ctrl = hist_ctrl / len(ratings_ctrl)
+            hist_exp = hist_exp / len(ratings_exp)
+            
+            # Plot bars side by side
+            bar_width = 0.35
+            x = np.arange(len(bins)-1)
+            axs[plot_idx].bar(x - bar_width/2, hist_ctrl, bar_width, label='Control Prompt', color='skyblue', alpha=0.7)
+            axs[plot_idx].bar(x + bar_width/2, hist_exp, bar_width, label='Experimental Prompt', color='lightgreen', alpha=0.7)
+            
             axs[plot_idx].set_title('Rating Distribution')
             axs[plot_idx].set_xlabel('Rating')
-            axs[plot_idx].set_ylabel('Density')
+            axs[plot_idx].set_ylabel('Proportion')
+            axs[plot_idx].set_xticks(x)
+            axs[plot_idx].set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
             axs[plot_idx].legend()
             plot_idx += 1
 
