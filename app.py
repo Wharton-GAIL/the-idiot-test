@@ -5,6 +5,8 @@ import extra_streamlit_components as stx
 import matplotlib
 import os
 import copy
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from call_gpt import call_gpt
 from log_love import setup_logging
@@ -16,7 +18,7 @@ from analysis import generate_analysis, create_html_report
 matplotlib.use('Agg')
 
 # Define maximum number of workers
-MAX_WORKERS = 5
+MAX_WORKERS = 10  # Adjust as needed for parallel iterations
 
 AVAILABLE_MODELS = [
     "gpt-4o-mini",
@@ -54,15 +56,14 @@ def get_api_key(cookie_name):
     else:
         return value
 
-# Complete any missing assistant responses in one conversation by submitting the conversation up to that point to the AI model.
 def get_responses(messages, settings_response, system_prompt=None):
     total_steps = len(messages)
     logger.info(f"Fetching responses for {total_steps} messages:")
     logger.info(messages)
     completed_messages = []
-    total_response_cost = 0.0  # Initialize total response cost
-    
-    for i, message in enumerate(messages):
+    total_response_cost = 0.0
+
+    for message in messages:
         if message['role'] == 'user':
             completed_messages.append(message)
         elif message['role'] == 'assistant':
@@ -70,24 +71,24 @@ def get_responses(messages, settings_response, system_prompt=None):
                 completed_messages.append(message)
             else:
                 response, response_cost = call_gpt(
-                    completed_messages,
+                    completed_messages.copy(),
                     settings=settings_response,
                     return_pricing=True,
                     system_prompt=system_prompt
                 )
                 completed_messages.append({"role": "assistant", "content": response})
                 total_response_cost += response_cost  # Accumulate response cost
-    
+
     # Final assistant response
     response, response_cost = call_gpt(
-        completed_messages,
+        completed_messages.copy(),
         settings=settings_response,
         return_pricing=True,
         system_prompt=system_prompt
     )
     completed_messages.append({"role": "assistant", "content": response})
     total_response_cost += response_cost  # Accumulate final response cost
-    
+
     return completed_messages, total_response_cost  # Return both messages and cost
 
 # Sidebar settings
@@ -267,6 +268,92 @@ def rate_response(response, settings_rating, rating_prompt_template):
         return rating, rating_cost, rating_response
     return None, rating_cost, rating_response
 
+def run_single_iteration_control(args):
+    (
+        iteration_index,
+        messages_ctrl_original,
+        settings_response,
+        control_rating_prompt_template,
+        temperature_rating,
+        model_rating,
+        control_system_message
+    ) = args
+    try:
+        logger.info(f"Control iteration {iteration_index + 1} started.")
+        updated_messages_ctrl, response_cost_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
+        last_response_ctrl = updated_messages_ctrl[-1]['content']
+
+        if analyze_length:
+            length = len(last_response_ctrl)
+        else:
+            length = None
+
+        if analyze_rating:
+            settings_rating = settings_response.copy()
+            settings_rating.update({
+                "model": model_rating,
+                "temperature": float(temperature_rating),
+                "stop_sequences": "]"
+            })
+            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
+        else:
+            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = None, 0.0, None
+
+        return {
+            "response": last_response_ctrl,
+            "length": length,
+            "rating": rating_ctrl,
+            "rating_text": rating_text_ctrl,
+            "cost": response_cost_ctrl + (rating_cost_ctrl if analyze_rating else 0.0),
+            "messages": updated_messages_ctrl
+        }
+    except Exception as e:
+        logger.error(f"Error in control iteration {iteration_index + 1}: {e}")
+        return None
+
+def run_single_iteration_experiment(args):
+    (
+        iteration_index,
+        messages_exp_original,
+        settings_response,
+        experiment_rating_prompt_template,
+        temperature_rating,
+        model_rating,
+        experiment_system_message
+    ) = args
+    try:
+        logger.info(f"Experiment iteration {iteration_index + 1} started.")
+        updated_messages_exp, response_cost_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
+        last_response_exp = updated_messages_exp[-1]['content']
+
+        if analyze_length:
+            length = len(last_response_exp)
+        else:
+            length = None
+
+        if analyze_rating:
+            settings_rating = settings_response.copy()
+            settings_rating.update({
+                "model": model_rating,
+                "temperature": float(temperature_rating),
+                "stop_sequences": "]"
+            })
+            rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
+        else:
+            rating_exp, rating_cost_exp, rating_text_exp = None, 0.0, None
+
+        return {
+            "response": last_response_exp,
+            "length": length,
+            "rating": rating_exp,
+            "rating_text": rating_text_exp,
+            "cost": response_cost_exp + (rating_cost_exp if analyze_rating else 0.0),
+            "messages": updated_messages_exp
+        }
+    except Exception as e:
+        logger.error(f"Error in experiment iteration {iteration_index + 1}: {e}")
+        return None
+
 def run_analysis(
     openai_api_key, anthropic_api_key, gemini_api_key,
     messages_ctrl_original, messages_exp_original,
@@ -292,122 +379,93 @@ def run_analysis(
         "gemini_api_key": gemini_api_key
     }
 
-    # Initialize status
-    status = st.empty()
-
     # Initialize lists to store per-iteration messages
     messages_ctrl_per_iteration = []
     messages_exp_per_iteration = []
 
-    # Process Control Messages
-    status.text("Analyzing control prompt...")
-    logger.info(f"Starting control analysis for {number_of_iterations} iterations")
-    responses_ctrl = []
-    lengths_ctrl = []
-    ratings_ctrl = []
-    rating_texts_ctrl = []
-    total_cost_ctrl = 0
+    # Prepare arguments for control iterations
+    control_args = [
+        (
+            i,
+            messages_ctrl_original,
+            settings_response,
+            control_rating_prompt_template,
+            temperature_rating,
+            model_rating,
+            control_system_message
+        )
+        for i in range(number_of_iterations)
+    ]
 
-    for i in range(number_of_iterations):
-        try:
-            progress = (i + 1) / number_of_iterations
-            status.progress(progress)
+    # Prepare arguments for experiment iterations
+    experiment_args = [
+        (
+            i,
+            messages_exp_original,
+            settings_response,
+            experiment_rating_prompt_template,
+            temperature_rating,
+            model_rating,
+            experiment_system_message
+        )
+        for i in range(number_of_iterations)
+    ]
 
-            # Get responses using get_responses
-            updated_messages_ctrl, response_cost_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
-            last_response_ctrl = updated_messages_ctrl[-1]['content']
+    total_futures = len(control_args) + len(experiment_args)
 
-            # Store response
-            responses_ctrl.append(last_response_ctrl)
-            # Store length
-            if analyze_length:
-                lengths_ctrl.append(len(last_response_ctrl))
-            else:
-                lengths_ctrl.append(None)
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
 
-            # Rate the response if analyze_rating is True
-            if analyze_rating:
-                # Settings for rating the response
-                settings_rating = settings_response.copy()
-                settings_rating.update({
-                    "model": model_rating,
-                    "temperature": float(temperature_rating),
-                    "stop_sequences": "]"
-                })
+    results = []
 
-                rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
-                if rating_ctrl is not None:
-                    total_cost_ctrl += rating_cost_ctrl
-                    ratings_ctrl.append(rating_ctrl)
-                    rating_texts_ctrl.append(rating_text_ctrl)
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_type = {}
+        for args in control_args:
+            future = executor.submit(run_single_iteration_control, args)
+            future_to_type[future] = 'control'
+        for args in experiment_args:
+            future = executor.submit(run_single_iteration_experiment, args)
+            future_to_type[future] = 'experiment'
+
+        completed = 0
+        for future in as_completed(future_to_type):
+            iteration_type = future_to_type[future]
+            result = future.result()
+            if result:
+                if iteration_type == 'control':
+                    messages_ctrl_per_iteration.append(result["messages"])
+                    results.append(('control', result))
                 else:
-                    st.error(f"Failed to extract rating for control iteration {i+1}.")
-            else:
-                ratings_ctrl.append(None)
-                rating_texts_ctrl.append(None)
+                    messages_exp_per_iteration.append(result["messages"])
+                    results.append(('experiment', result))
+            completed += 1
+            progress_bar.progress(completed / total_futures)
+            progress_text.text(f"Completed {completed} of {total_futures} iterations.")
 
-            # Store the entire conversation for this iteration
-            messages_ctrl_per_iteration.append(updated_messages_ctrl)
-        except Exception as e:
-            st.error(f"Error in control iteration {i+1}: {e}")
+    # Initialize total costs
+    total_cost_ctrl = sum(r[1]["cost"] for r in results if r[0] == 'control')
+    total_cost_exp = sum(r[1]["cost"] for r in results if r[0] == 'experiment')
 
-    # Process Experimental Messages
-    status.text("Analyzing experiment prompt...")
-    logger.info(f"Starting experiment analysis for {number_of_iterations} iterations")
-    responses_exp = []
-    lengths_exp = []
-    ratings_exp = []
-    rating_texts_exp = []
-    total_cost_exp = 0
+    # Separate responses and other metrics
+    responses_ctrl = [r[1]["response"] for r in results if r[0] == 'control']
+    lengths_ctrl = [r[1]["length"] for r in results if r[0] == 'control']
+    ratings_ctrl = [r[1]["rating"] for r in results if r[0] == 'control']
+    rating_texts_ctrl = [r[1]["rating_text"] for r in results if r[0] == 'control']
 
-    for i in range(number_of_iterations):
-        try:
-            progress = (i + 1) / number_of_iterations
-            status.progress(progress)
+    responses_exp = [r[1]["response"] for r in results if r[0] == 'experiment']
+    lengths_exp = [r[1]["length"] for r in results if r[0] == 'experiment']
+    ratings_exp = [r[1]["rating"] for r in results if r[0] == 'experiment']
+    rating_texts_exp = [r[1]["rating_text"] for r in results if r[0] == 'experiment']
 
-            # Get responses using get_responses
-            updated_messages_exp, response_cost_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
-            last_response_exp = updated_messages_exp[-1]['content']
+    total_cost = total_cost_ctrl + total_cost_exp
 
-            # Store response
-            responses_exp.append(last_response_exp)
-            # Store length
-            if analyze_length:
-                lengths_exp.append(len(last_response_exp))
-            else:
-                lengths_exp.append(None)
+    progress_bar.empty()
+    progress_text.empty()
 
-            # Rate the response if analyze_rating is True
-            if analyze_rating:
-                # Settings for rating the response
-                settings_rating = settings_response.copy()
-                settings_rating.update({
-                    "model": model_rating,
-                    "temperature": float(temperature_rating),
-                    "stop_sequences": "]"
-                })
-
-                rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
-                if rating_exp is not None:
-                    total_cost_exp += rating_cost_exp
-                    ratings_exp.append(rating_exp)
-                    rating_texts_exp.append(rating_text_exp)
-                else:
-                    st.error(f"Failed to extract rating for experiment iteration {i+1}.")
-            else:
-                ratings_exp.append(None)
-                rating_texts_exp.append(None)
-
-            # Store the entire conversation for this iteration
-            messages_exp_per_iteration.append(updated_messages_exp)
-        except Exception as e:
-            st.error(f"Error in experiment iteration {i+1}: {e}")
-
-    status.text("Generating analysis...")
-    logger.info("Generating final analysis and plots")
+    st.success("Analysis complete!", icon="✅")
 
     # Generate analysis data
-    analysis_data, plot_base64, total_cost = generate_analysis(
+    analysis_data, plot_base64, _ = generate_analysis(
         responses_ctrl,
         lengths_ctrl,
         ratings_ctrl,
@@ -419,8 +477,6 @@ def run_analysis(
         analyze_rating,
         analyze_length,
     )
-
-    status.empty()
 
     # Generate the HTML report
     logger.info("Creating HTML report")
@@ -450,7 +506,6 @@ def run_analysis(
         experiment_system_message=experiment_system_message,
     )
 
-    logger.info("Analysis complete")
     st.download_button(
         label="Download Report as HTML",
         data=html_report,
@@ -510,23 +565,24 @@ if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     if has_empty_prompt:
         st.error("All prompt fields must contain text. Please fill in any empty prompts.")
     else:
-        # Run the analysis
-        run_analysis(
-            openai_api_key,
-            anthropic_api_key,
-            gemini_api_key,
-            messages_ctrl_original,
-            messages_exp_original,
-            control_rating_prompt_template if analyze_rating else None,
-            experiment_rating_prompt_template if analyze_rating else None,
-            number_of_iterations,
-            model_response,
-            temperature_response,
-            model_rating,
-            temperature_rating,
-            analyze_rating,
-            analyze_length,
-            show_transcripts,
-            control_system_message=control_system_message,
-            experiment_system_message=experiment_system_message
-        )
+        with st.spinner("Running analysis..."):
+            # Run the analysis
+            run_analysis(
+                openai_api_key,
+                anthropic_api_key,
+                gemini_api_key,
+                messages_ctrl_original,
+                messages_exp_original,
+                control_rating_prompt_template if analyze_rating else None,
+                experiment_rating_prompt_template if analyze_rating else None,
+                number_of_iterations,
+                model_response,
+                temperature_response,
+                model_rating,
+                temperature_rating,
+                analyze_rating,
+                analyze_length,
+                show_transcripts,
+                control_system_message=control_system_message,
+                experiment_system_message=experiment_system_message
+            )
