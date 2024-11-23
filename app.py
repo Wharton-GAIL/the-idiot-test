@@ -5,6 +5,8 @@ import extra_streamlit_components as stx
 import matplotlib
 import os
 import copy
+import pandas as pd
+import io
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import streamlit.components.v1 as components
@@ -14,6 +16,7 @@ from log_love import setup_logging
 logger = None
 logger = setup_logging(logger)
 from analysis import generate_analysis, create_html_report
+from import_export import generate_settings_xlsx
 
 # For the plots to display correctly in Streamlit
 matplotlib.use('Agg')
@@ -168,7 +171,7 @@ model_rating = st.sidebar.selectbox(
 # Checkboxes for analysis options
 analyze_rating = st.sidebar.checkbox("Use AI to analyze ratings", value=True)
 analyze_length = st.sidebar.checkbox("Analyze length of response", value=False)
-show_transcripts = st.sidebar.checkbox("Add a table of all responses", value=True)
+show_transcripts = st.sidebar.checkbox("Add table of all responses", value=True)
 
 # Temperature for rating
 temperature_rating = st.sidebar.slider(
@@ -465,6 +468,13 @@ def run_analysis(
         analyze_length
     )
 
+    # Prepare evaluation rubrics per chat
+    evaluation_rubrics = {
+        chat_index: chat_info["rating_prompt_template"]
+        for chat_index, chat_info in enumerate(chat_data, start=1)
+        if analyze_rating and chat_info["rating_prompt_template"]
+    }
+
     # Generate the HTML report with comparative analysis
     html_report = create_html_report(
         analysis_data,
@@ -476,6 +486,7 @@ def run_analysis(
         model_rating=model_rating,
         temperature_response=temperature_response,
         temperature_rating=temperature_rating,
+        evaluation_rubrics=evaluation_rubrics,
         analyze_rating=analyze_rating,
         show_transcripts=show_transcripts,
     )
@@ -490,37 +501,61 @@ def run_analysis(
     # Display the HTML report in Streamlit
     st.components.v1.html(html_report, height=1000, scrolling=True)
 
-# Run Analysis Streamlit UI
-if st.button("Run Analysis", key="run_analysis_button", type="primary"):
-    has_empty_prompt = False
+# Run Analysis and Download Settings Streamlit UI
+col1, col2 = st.columns(2)
 
-    # Check all chats for empty prompts
-    for chat_index in range(1, st.session_state.num_chats + 1):
-        prompt_count = st.session_state.get(f'prompt_count_chat_{chat_index}', 1)
-        for i in range(1, prompt_count + 1):
-            user_msg = st.session_state.get(f'user_msg_chat_{chat_index}_{i}', '').strip()
-            if not user_msg:
-                has_empty_prompt = True
+with col1:
+    if st.button("Run Analysis", key="run_analysis_button", type="primary"):
+        has_empty_prompt = False
+
+        # Check all chats for empty prompts
+        for chat_index in range(1, st.session_state.num_chats + 1):
+            prompt_count = st.session_state.get(f'prompt_count_chat_{chat_index}', 1)
+            for i in range(1, prompt_count + 1):
+                user_msg = st.session_state.get(f'user_msg_chat_{chat_index}_{i}', '').strip()
+                if not user_msg:
+                    has_empty_prompt = True
+                    break
+            if has_empty_prompt:
                 break
-        if has_empty_prompt:
-            break
 
-    if has_empty_prompt:
-        st.error("All prompt fields must contain text. Please fill in any empty prompts.")
-    else:
-        with st.spinner("Running analysis..."):
-            # Run the analysis
-            run_analysis(
-                openai_api_key,
-                anthropic_api_key,
-                gemini_api_key,
-                chat_data,
-                number_of_iterations,
-                model_response,
-                temperature_response,
-                model_rating,
-                temperature_rating,
-                analyze_rating,
-                analyze_length,
-                show_transcripts
-            )
+        if has_empty_prompt:
+            st.error("All prompt fields must contain text. Please fill in any empty prompts.")
+        else:
+            with st.spinner("Running analysis..."):
+                # Run the analysis
+                run_analysis(
+                    openai_api_key,
+                    anthropic_api_key,
+                    gemini_api_key,
+                    chat_data,
+                    number_of_iterations,
+                    model_response,
+                    temperature_response,
+                    model_rating,
+                    temperature_rating,
+                    analyze_rating,
+                    analyze_length,
+                    show_transcripts
+                )
+
+with col2:
+    # Generate the XLSX file
+    xlsx_data = generate_settings_xlsx(
+        number_of_iterations,
+        model_response,
+        temperature_response,
+        model_rating,
+        temperature_rating,
+        analyze_rating,
+        analyze_length,
+        show_transcripts,
+        chat_data
+    )
+    # Create the download button directly
+    st.download_button(
+        label="Download Settings",
+        data=xlsx_data,
+        file_name="test_settings.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
