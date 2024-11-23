@@ -151,16 +151,17 @@ def create_html_report(
     analysis_data,
     plot_base64,
     total_cost,
-    chat_data,       # Now a list
-    chat_results,    # Dictionary
+    chat_data,
+    chat_results,
     model_response=None,
     model_rating=None,
     temperature_response=None,
     temperature_rating=None,
+    evaluation_rubrics=None,
     analyze_rating=True,
     show_transcripts=False,
 ):
-    # Construct combined HTML for each chat's system message and prompts
+    # Construct combined HTML for each chat's system message, prompts, and evaluation rubric
     def extract_user_messages(messages):
         conversation = []
         for msg in messages:
@@ -176,19 +177,31 @@ def create_html_report(
     combined_html = ""
 
     for idx, chat_info in enumerate(chat_data, start=1):
+        rubric_html = ""
+        if analyze_rating and evaluation_rubrics and idx in evaluation_rubrics:
+            rubric = evaluation_rubrics[idx]
+            rubric_html = f"""
+                <div class='response-box'>
+                    {rubric}
+                </div>
+            """
+        
         combined_html += f"""
         <div class="config-section" style="margin-bottom: 0;">
+            <p><strong>Chat {idx}</strong></p>
             <div class="config-columns">
                 <div class="config-column">
-                    <div class="prompt-label">Chat {idx} System Message:</div>
+                    <div class="prompt-label">System Message:</div>
                     <div class="response-box" style="margin-bottom: 0;">{chat_info['system_message'] if chat_info['system_message'] else 'None'}</div>
                 </div>
                 <div class="config-column">
-                    <div class="prompt-label" style="margin-top: 0;">Chat {idx} Prompts</div>
+                    <div class="prompt-label" style="margin-top: 0;">Prompts:</div>
                     <div class="response-box">{extract_user_messages([msg for msg in chat_info['messages'] if msg['role'] == 'user' or msg['role'] == 'assistant'])}</div>
                 </div>
             </div>
-        </div>
+                <div class="prompt-label">Evaluation Rubric:</div>
+                {rubric_html}
+            </div>
         """
 
     # CSS styles with escaped curly braces
@@ -257,6 +270,7 @@ def create_html_report(
             <p><strong>Response Temperature:</strong> {temperature_response if temperature_response else 'N/A'}</p>
             {f"<p><strong>Rating Model:</strong> {model_rating}</p>" if analyze_rating and model_rating else ""}
             {f"<p><strong>Rating Temperature:</strong> {temperature_rating}</p>" if analyze_rating and temperature_rating else ""}
+            {f"<div class='response-box'><strong>Evaluation Rubric:</strong><br>{evaluation_rubric}</div>" if False else ""}  <!-- Removed global rubric display -->
             {combined_html}
         </div>
 
