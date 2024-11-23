@@ -7,6 +7,7 @@ import os
 import copy
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import streamlit.components.v1 as components
 
 from call_gpt import call_gpt
 from log_love import setup_logging
@@ -37,6 +38,10 @@ st.title("Prompt Analyzer")
 
 # Initialize CookieManager with a unique key
 cookie_manager = stx.CookieManager(key='cookie_manager')
+
+# Define default system messages
+default_control_system_message = "This is an important experiment. Please respond briefly."
+default_experiment_system_message = "This is an important experiment. Please respond briefly."
 
 # Function to save API keys using cookies
 def save_api_key(cookie_name, cookie_value):
@@ -95,7 +100,10 @@ def get_responses(messages, settings_response, system_prompt=None):
 st.sidebar.header("Settings")
 
 # Determine if keys are saved
-has_saved_keys = bool(get_api_key("openai_api_key")) or bool(get_api_key("anthropic_api_key")) or bool(get_api_key("gemini_api_key"))
+has_saved_keys = any(
+    get_api_key(key)
+    for key in ["openai_api_key", "anthropic_api_key", "gemini_api_key"]
+)
 
 # API Keys section with expander
 with st.sidebar.expander("API Keys", expanded=not has_saved_keys):
@@ -168,91 +176,139 @@ temperature_rating = st.sidebar.slider(
     help="Controls the randomness of the rating generation."
 )
 
-# Initialize message counts
-max_message_pairs = 5
+# Initialize the number of chats
+if 'num_chats' not in st.session_state:
+    st.session_state.num_chats = 1
 
-# Main area for prompts
-col1, col2 = st.columns(2)
+# Default prompts
 default_control_prompt = "Call me an idiot."
 default_experiment_prompt = "Call me a bozo."
 
-with col1:
-    st.header("Control Message")
-    if 'prompt_count_ctrl' not in st.session_state:
-        st.session_state.prompt_count_ctrl = 1
+# Button to add a new chat
+if st.button("+ Add Chat", key='add_chat_button'):
+    st.session_state.num_chats += 1
+    # Initialize prompt count for the new chat
+    st.session_state[f'prompt_count_chat_{st.session_state.num_chats}'] = 1
 
-    # Add system message field for control
-    control_system_message = st.text_area(
-        "System Message (Control)",
-        value="",
-        key='system_msg_ctrl',
-        height=70,
-        help="Optional system message to set the behavior of the AI overall. Example: 'Be terse. This is serious."
-    )
+# Initialize chats if not present
+for i in range(1, st.session_state.num_chats + 1):
+    if f'prompt_count_chat_{i}' not in st.session_state:
+        st.session_state[f'prompt_count_chat_{i}'] = 1
 
-    if st.button("Add Message Pair", key='add_prompt_ctrl'):
-        if st.session_state.prompt_count_ctrl < max_message_pairs:
-            st.session_state.prompt_count_ctrl += 1
+# Add custom CSS to modify the columns container
+st.markdown(
+    """
+    <style>
+    /* Target the container that holds the columns */
+    div[data-testid="stHorizontalBlock"] {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+    /* Ensure each column does not shrink and has a minimum width */
+    div[data-testid="stHorizontalBlock"] > div {
+        flex: none !important;
+        width: 350px !important; /* Adjust the width as needed */
+        margin-right: 20px;
+    }
+    /* Hide the scrollbar track */
+    div[data-testid="stHorizontalBlock"]::-webkit-scrollbar {
+        height: 8px;
+    }
+    div[data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
+        background-color: #cccccc;
+        border-radius: 4px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-    # Loop to display prompt and response inputs
-    for i in range(1, st.session_state.prompt_count_ctrl + 1):
-        if i > 1:
-            st.text_area(f"Response {i-1} (Control)", key=f'assistant_msg_ctrl_{i-1}', height=70)
+# Collect chat data
+chat_data = []
 
-        st.text_area(f"Prompt {i} (Control)",
-                     value=default_control_prompt if i == 1 else "",
-                     key=f'user_msg_ctrl_{i}',
-                     height=70)
+# Create columns for each chat
+columns = st.columns(st.session_state.num_chats)
 
-    # Evaluation Rubric for control messages. MAKE SURE TO INCLUDE {{response}} IN THE PROMPT. The double curly braces are important!!!
-    if analyze_rating:
-        control_rating_prompt_template = st.text_area(
-            "Evaluation Rubric for Control Messages",
-            value="""I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
-{response}""",
-            height=200,
-            key='control_rating_prompt_template',
-            help="This prompt will be used to rate the response. It must have {{response}} in it. It must ask for a rating in brackets like [0]."
+for idx, col in enumerate(columns):
+    chat_index = idx + 1
+
+    with col:
+        st.header(f"Chat {chat_index}")
+
+        # Assign default system message based on chat index
+        if chat_index == 1:
+            system_message_default = default_control_system_message
+        else:
+            system_message_default = default_experiment_system_message
+
+        # System message
+        system_message = st.text_area(
+            f"System Message (Chat {chat_index})",
+            value=system_message_default,
+            key=f'system_msg_chat_{chat_index}',
+            height=70,
+            help="Optional system message to set the behavior of the AI overall."
         )
 
-with col2:
-    st.header("Experimental Message")
-    if 'prompt_count_exp' not in st.session_state:
-        st.session_state.prompt_count_exp = 1
+        # Button to add message pair
+        if st.button("Add Message Pair", key=f'add_prompt_chat_{chat_index}'):
+            if st.session_state[f'prompt_count_chat_{chat_index}'] < 5:
+                st.session_state[f'prompt_count_chat_{chat_index}'] += 1
 
-    # Add system message field for experiment
-    experiment_system_message = st.text_area(
-        "System Message (Experiment)",
-        value="",
-        key='system_msg_exp',
-        height=70,
-        help="Optional system message to set the behavior for experiment messages."
-    )
+        # Loop to display prompt and response inputs
+        for i in range(1, st.session_state[f'prompt_count_chat_{chat_index}'] + 1):
+            if i > 1:
+                st.text_area(
+                    f"Response {i-1} (Chat {chat_index})",
+                    key=f'assistant_msg_chat_{chat_index}_{i-1}',
+                    height=70
+                )
 
-    if st.button("Add Message Pair", key='add_prompt_exp'):
-        if st.session_state.prompt_count_exp < max_message_pairs:
-            st.session_state.prompt_count_exp += 1
+            default_prompt = default_control_prompt if chat_index == 1 else default_experiment_prompt
+            default_prompt = default_prompt if i == 1 else ""
+            st.text_area(
+                f"Prompt {i} (Chat {chat_index})",
+                value=default_prompt,
+                key=f'user_msg_chat_{chat_index}_{i}',
+                height=70
+            )
 
-    # Loop to display prompt and response inputs
-    for i in range(1, st.session_state.prompt_count_exp + 1):
-        if i > 1:
-            st.text_area(f"Response {i-1} (Experiment)", key=f'assistant_msg_exp_{i-1}', height=70)
+        # Evaluation Rubric for messages
+        if analyze_rating:
+            default_rating_prompt = (
+                """I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+{response}"""
+                if chat_index == 1
+                else """I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+{response}"""
+            )
+            rating_prompt_template = st.text_area(
+                f"Evaluation Rubric for Chat {chat_index}",
+                value=default_rating_prompt,
+                height=200,
+                key=f'rating_prompt_template_chat_{chat_index}',
+                help="This prompt will be used to rate the response. It must have {response} in it. It must ask for a rating in brackets like [0]."
+            )
 
-        st.text_area(f"Prompt {i} (Experiment)",
-                     value=default_experiment_prompt if i == 1 else "",
-                     key=f'user_msg_exp_{i}',
-                     height=70)
+        # Collect chat-specific data
+        chat_info = {
+            "system_message": system_message,
+            "rating_prompt_template": rating_prompt_template if analyze_rating else None,
+            "messages": [],
+        }
 
-    # Evaluation Rubric for experiment messages
-    if analyze_rating:
-        experiment_rating_prompt_template = st.text_area(
-            "Evaluation Rubric for Experiment Messages",
-            value="""I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
-{response}""",
-            height=200,
-            key='experiment_rating_prompt_template',
-            help="Template used by the model to rate the responses for the experiment prompt."
-        )
+        # Collect messages
+        for i in range(1, st.session_state[f'prompt_count_chat_{chat_index}'] + 1):
+            if i > 1:
+                assistant_msg = st.session_state.get(f'assistant_msg_chat_{chat_index}_{i-1}', '').strip()
+                chat_info["messages"].append({"role": "assistant", "content": assistant_msg})
+
+            user_msg = st.session_state.get(f'user_msg_chat_{chat_index}_{i}', '').strip()
+            chat_info["messages"].append({"role": "user", "content": user_msg})
+
+        chat_data.append(chat_info)
 
 def get_rating_prompt(response, rating_prompt_template):
     return rating_prompt_template.format(response=response)
@@ -268,109 +324,68 @@ def rate_response(response, settings_rating, rating_prompt_template):
         return rating, rating_cost, rating_response
     return None, rating_cost, rating_response
 
-def run_single_iteration_control(args):
+def run_single_iteration(args):
     (
         iteration_index,
-        messages_ctrl_original,
+        chat_index,
+        chat_info,
         settings_response,
-        control_rating_prompt_template,
         temperature_rating,
         model_rating,
-        control_system_message
+        analyze_length,
+        analyze_rating
     ) = args
     try:
-        logger.info(f"Control iteration {iteration_index + 1} started.")
-        updated_messages_ctrl, response_cost_ctrl = get_responses(copy.deepcopy(messages_ctrl_original), settings_response, system_prompt=control_system_message)
-        last_response_ctrl = updated_messages_ctrl[-1]['content']
+        logger.info(f"Chat {chat_index} iteration {iteration_index + 1} started.")
+        updated_messages, response_cost = get_responses(
+            copy.deepcopy(chat_info["messages"]),
+            settings_response,
+            system_prompt=chat_info["system_message"]
+        )
+        last_response = updated_messages[-1]['content']
 
         if analyze_length:
-            length = len(last_response_ctrl)
+            length = len(last_response)
         else:
             length = None
 
-        if analyze_rating:
+        if analyze_rating and chat_info["rating_prompt_template"]:
             settings_rating = settings_response.copy()
             settings_rating.update({
                 "model": model_rating,
                 "temperature": float(temperature_rating),
                 "stop_sequences": "]"
             })
-            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = rate_response(last_response_ctrl, settings_rating, control_rating_prompt_template)
+            rating, rating_cost, rating_text = rate_response(
+                last_response,
+                settings_rating,
+                chat_info["rating_prompt_template"]
+            )
+            total_cost = response_cost + rating_cost
         else:
-            rating_ctrl, rating_cost_ctrl, rating_text_ctrl = None, 0.0, None
+            rating, rating_text = None, None
+            total_cost = response_cost
 
         return {
-            "response": last_response_ctrl,
+            "chat_index": chat_index,
+            "response": last_response,
             "length": length,
-            "rating": rating_ctrl,
-            "rating_text": rating_text_ctrl,
-            "cost": response_cost_ctrl + (rating_cost_ctrl if analyze_rating else 0.0),
-            "messages": updated_messages_ctrl
+            "rating": rating,
+            "rating_text": rating_text,
+            "cost": total_cost,
+            "messages": updated_messages
         }
     except Exception as e:
-        logger.error(f"Error in control iteration {iteration_index + 1}: {e}")
-        return None
-
-def run_single_iteration_experiment(args):
-    (
-        iteration_index,
-        messages_exp_original,
-        settings_response,
-        experiment_rating_prompt_template,
-        temperature_rating,
-        model_rating,
-        experiment_system_message
-    ) = args
-    try:
-        logger.info(f"Experiment iteration {iteration_index + 1} started.")
-        updated_messages_exp, response_cost_exp = get_responses(copy.deepcopy(messages_exp_original), settings_response, system_prompt=experiment_system_message)
-        last_response_exp = updated_messages_exp[-1]['content']
-
-        if analyze_length:
-            length = len(last_response_exp)
-        else:
-            length = None
-
-        if analyze_rating:
-            settings_rating = settings_response.copy()
-            settings_rating.update({
-                "model": model_rating,
-                "temperature": float(temperature_rating),
-                "stop_sequences": "]"
-            })
-            rating_exp, rating_cost_exp, rating_text_exp = rate_response(last_response_exp, settings_rating, experiment_rating_prompt_template)
-        else:
-            rating_exp, rating_cost_exp, rating_text_exp = None, 0.0, None
-
-        return {
-            "response": last_response_exp,
-            "length": length,
-            "rating": rating_exp,
-            "rating_text": rating_text_exp,
-            "cost": response_cost_exp + (rating_cost_exp if analyze_rating else 0.0),
-            "messages": updated_messages_exp
-        }
-    except Exception as e:
-        logger.error(f"Error in experiment iteration {iteration_index + 1}: {e}")
+        logger.error(f"Error in chat {chat_index} iteration {iteration_index + 1}: {e}")
         return None
 
 def run_analysis(
     openai_api_key, anthropic_api_key, gemini_api_key,
-    messages_ctrl_original, messages_exp_original,
-    control_rating_prompt_template, experiment_rating_prompt_template,
+    chat_data,
     number_of_iterations, model_response, temperature_response,
-    model_rating, temperature_rating, analyze_rating, analyze_length, show_transcripts,
-    control_system_message=None, experiment_system_message=None
+    model_rating, temperature_rating, analyze_rating, analyze_length, show_transcripts
 ):
     logger.info("Starting analysis run")
-    if not messages_ctrl_original:
-        st.error("Please provide at least one message for the control prompt.")
-        return
-    if not messages_exp_original:
-        st.error("Please provide at least one message for the experiment prompt.")
-        return
-
-    # Settings for response generation
     settings_response = {
         "model": model_response,
         "temperature": float(temperature_response),
@@ -379,131 +394,90 @@ def run_analysis(
         "gemini_api_key": gemini_api_key
     }
 
-    # Initialize lists to store per-iteration messages
-    messages_ctrl_per_iteration = []
-    messages_exp_per_iteration = []
-
-    # Prepare arguments for control iterations
-    control_args = [
-        (
-            i,
-            messages_ctrl_original,
-            settings_response,
-            control_rating_prompt_template,
-            temperature_rating,
-            model_rating,
-            control_system_message
-        )
-        for i in range(number_of_iterations)
-    ]
-
-    # Prepare arguments for experiment iterations
-    experiment_args = [
-        (
-            i,
-            messages_exp_original,
-            settings_response,
-            experiment_rating_prompt_template,
-            temperature_rating,
-            model_rating,
-            experiment_system_message
-        )
-        for i in range(number_of_iterations)
-    ]
-
-    total_futures = len(control_args) + len(experiment_args)
+    total_futures = number_of_iterations * len(chat_data)
 
     progress_bar = st.progress(0)
     progress_text = st.empty()
 
     results = []
 
+    # Prepare arguments for all iterations
+    all_args = []
+    for chat_index, chat_info in enumerate(chat_data, start=1):
+        for i in range(number_of_iterations):
+            args = (
+                i,
+                chat_index,
+                chat_info,
+                settings_response,
+                temperature_rating,
+                model_rating,
+                analyze_length,
+                analyze_rating
+            )
+            all_args.append(args)
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_type = {}
-        for args in control_args:
-            future = executor.submit(run_single_iteration_control, args)
-            future_to_type[future] = 'control'
-        for args in experiment_args:
-            future = executor.submit(run_single_iteration_experiment, args)
-            future_to_type[future] = 'experiment'
+        future_to_chat_index = {}
+        for args in all_args:
+            future = executor.submit(run_single_iteration, args)
+            future_to_chat_index[future] = args[1]
 
         completed = 0
-        for future in as_completed(future_to_type):
-            iteration_type = future_to_type[future]
+        for future in as_completed(future_to_chat_index):
+            chat_index = future_to_chat_index[future]
             result = future.result()
             if result:
-                if iteration_type == 'control':
-                    messages_ctrl_per_iteration.append(result["messages"])
-                    results.append(('control', result))
-                else:
-                    messages_exp_per_iteration.append(result["messages"])
-                    results.append(('experiment', result))
+                results.append(result)
             completed += 1
             progress_bar.progress(completed / total_futures)
             progress_text.text(f"Completed {completed} of {total_futures} iterations.")
-
-    # Initialize total costs
-    total_cost_ctrl = sum(r[1]["cost"] for r in results if r[0] == 'control')
-    total_cost_exp = sum(r[1]["cost"] for r in results if r[0] == 'experiment')
-
-    # Separate responses and other metrics
-    responses_ctrl = [r[1]["response"] for r in results if r[0] == 'control']
-    lengths_ctrl = [r[1]["length"] for r in results if r[0] == 'control']
-    ratings_ctrl = [r[1]["rating"] for r in results if r[0] == 'control']
-    rating_texts_ctrl = [r[1]["rating_text"] for r in results if r[0] == 'control']
-
-    responses_exp = [r[1]["response"] for r in results if r[0] == 'experiment']
-    lengths_exp = [r[1]["length"] for r in results if r[0] == 'experiment']
-    ratings_exp = [r[1]["rating"] for r in results if r[0] == 'experiment']
-    rating_texts_exp = [r[1]["rating_text"] for r in results if r[0] == 'experiment']
-
-    total_cost = total_cost_ctrl + total_cost_exp
 
     progress_bar.empty()
     progress_text.empty()
 
     st.success("Analysis complete!", icon="✅")
 
-    # Generate analysis data
-    analysis_data, plot_base64, _ = generate_analysis(
-        responses_ctrl,
-        lengths_ctrl,
-        ratings_ctrl,
-        total_cost_ctrl,
-        responses_exp,
-        lengths_exp,
-        ratings_exp,
-        total_cost_exp,
+    # Organize results by chat for comparative analysis
+    chat_results = {}
+    for res in results:
+        chat_index = res["chat_index"]
+        if chat_index not in chat_results:
+            chat_results[chat_index] = {
+                "responses": [],
+                "lengths": [],
+                "ratings": [],
+                "rating_texts": [],
+                "total_cost": 0.0,
+                "messages_per_iteration": []
+            }
+        chat_results[chat_index]["responses"].append(res["response"])
+        chat_results[chat_index]["lengths"].append(res["length"])
+        chat_results[chat_index]["ratings"].append(res["rating"])
+        chat_results[chat_index]["rating_texts"].append(res["rating_text"])
+        chat_results[chat_index]["total_cost"] += res["cost"]
+        chat_results[chat_index]["messages_per_iteration"].append(res["messages"])
+
+    # Generate analysis data for all chats
+    analysis_data, plot_base64, total_cost = generate_analysis(
+        chat_results,
         analyze_rating,
-        analyze_length,
+        analyze_length
     )
 
-    # Generate the HTML report
-    logger.info("Creating HTML report")
+    # Generate the HTML report with comparative analysis
     html_report = create_html_report(
         analysis_data,
         plot_base64,
         total_cost,
-        messages_ctrl_original,
-        messages_exp_original,
-        messages_ctrl_per_iteration,
-        messages_exp_per_iteration,
-        control_rating_prompt_template,
-        experiment_rating_prompt_template,
-        analyze_rating=analyze_rating,
-        show_transcripts=show_transcripts,
-        responses_ctrl=responses_ctrl,
-        responses_exp=responses_exp,
-        ratings_ctrl=ratings_ctrl,
-        ratings_exp=ratings_exp,
-        rating_texts_ctrl=rating_texts_ctrl,
-        rating_texts_exp=rating_texts_exp,
+        chat_data=chat_data,
+        chat_results=chat_results,
         model_response=model_response,
         model_rating=model_rating,
         temperature_response=temperature_response,
         temperature_rating=temperature_rating,
-        control_system_message=control_system_message,
-        experiment_system_message=experiment_system_message,
+        analyze_rating=analyze_rating,
+        show_transcripts=show_transcripts,
     )
 
     st.download_button(
@@ -520,47 +494,16 @@ def run_analysis(
 if st.button("Run Analysis", key="run_analysis_button", type="primary"):
     has_empty_prompt = False
 
-    # Check control prompts for empty fields
-    for i in range(1, st.session_state.prompt_count_ctrl + 1):
-        if not st.session_state.get(f'user_msg_ctrl_{i}', '').strip():
-            has_empty_prompt = True
-            break
-
-    # Check experiment prompts for empty fields
-    if not has_empty_prompt:
-        for i in range(1, st.session_state.prompt_count_exp + 1):
-            if not st.session_state.get(f'user_msg_exp_{i}', '').strip():
+    # Check all chats for empty prompts
+    for chat_index in range(1, st.session_state.num_chats + 1):
+        prompt_count = st.session_state.get(f'prompt_count_chat_{chat_index}', 1)
+        for i in range(1, prompt_count + 1):
+            user_msg = st.session_state.get(f'user_msg_chat_{chat_index}_{i}', '').strip()
+            if not user_msg:
                 has_empty_prompt = True
                 break
-
-    # Collect the original messages for control
-    messages_ctrl_original = []
-    for i in range(1, st.session_state.prompt_count_ctrl + 1):
-        # First add the assistant message from the previous round if it exists
-        if i > 1:
-            assistant_msg = st.session_state.get(f'assistant_msg_ctrl_{i-1}', '').strip()
-            assistant_message = {"role": "assistant", "content": assistant_msg}
-            messages_ctrl_original.append(assistant_message)
-        
-        # Then add the user message for this round
-        user_msg = st.session_state.get(f'user_msg_ctrl_{i}', '').strip()
-        user_message = {"role": "user", "content": user_msg}
-        messages_ctrl_original.append(user_message)
-
-    # Collect the original messages for experiment
-    messages_exp_original = []
-    if not has_empty_prompt:
-        for i in range(1, st.session_state.prompt_count_exp + 1):
-            # First add the assistant message from the previous round if it exists
-            if i > 1:
-                assistant_msg = st.session_state.get(f'assistant_msg_exp_{i-1}', '').strip()
-                assistant_message = {"role": "assistant", "content": assistant_msg}
-                messages_exp_original.append(assistant_message)
-            
-            # Then add the user message for this round
-            user_msg = st.session_state.get(f'user_msg_exp_{i}', '').strip()
-            user_message = {"role": "user", "content": user_msg}
-            messages_exp_original.append(user_message)
+        if has_empty_prompt:
+            break
 
     if has_empty_prompt:
         st.error("All prompt fields must contain text. Please fill in any empty prompts.")
@@ -571,10 +514,7 @@ if st.button("Run Analysis", key="run_analysis_button", type="primary"):
                 openai_api_key,
                 anthropic_api_key,
                 gemini_api_key,
-                messages_ctrl_original,
-                messages_exp_original,
-                control_rating_prompt_template if analyze_rating else None,
-                experiment_rating_prompt_template if analyze_rating else None,
+                chat_data,
                 number_of_iterations,
                 model_response,
                 temperature_response,
@@ -582,7 +522,5 @@ if st.button("Run Analysis", key="run_analysis_button", type="primary"):
                 temperature_rating,
                 analyze_rating,
                 analyze_length,
-                show_transcripts,
-                control_system_message=control_system_message,
-                experiment_system_message=experiment_system_message
+                show_transcripts
             )
