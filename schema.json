@@ -1,0 +1,104 @@
+   {
+     "settings": {
+       "number_of_iterations": {
+         "title": "Number of Iterations",
+         "type": "int",
+         "default": 3,
+         "min_value": 1,
+         "max_value": 50,
+         "step": 1,
+         "help": "Number of times to run each prompt."
+       },
+       "model_response": {
+         "title": "Model for Response Generation",
+         "type": "str",
+         "default": "gpt-4o-mini",
+         "options": [
+           "gpt-4o-mini",
+           "gpt-4o",
+           "o1-mini",
+           "o1-preview",
+           "sonnet",
+           "haiku",
+           "gemini-1.5-flash",
+           "gemini-1.5-pro"
+         ],
+         "help": "Select the AI model that will generate responses."
+       },
+       "temperature_response": {
+         "title": "Temperature for Response Generation",
+         "type": "float",
+         "default": 1.0,
+         "min_value": 0.0,
+         "max_value": 1.0,
+         "step": 0.1,
+         "help": "Controls the randomness of the response generation."
+       },
+       "model_rating": {
+         "title": "Model for Rating",
+         "type": "str",
+         "default": "gpt-4o-mini",
+         "options": [
+           "gpt-4o-mini",
+           "gpt-4o",
+           "o1-mini",
+           "o1-preview",
+           "sonnet",
+           "haiku",
+           "gemini-1.5-flash",
+           "gemini-1.5-pro"
+         ],
+         "help": "Select the AI model that will rate the responses."
+       },
+       "temperature_rating": {
+         "title": "Temperature for Rating",
+         "type": "float",
+         "default": 0.0,
+         "min_value": 0.0,
+         "max_value": 1.0,
+         "step": 0.1,
+         "help": "Controls the randomness of the rating generation."
+       },
+       "analyze_rating": {
+         "title": "Use AI to analyze ratings",
+         "type": "bool",
+         "default": true
+       },
+       "analyze_length": {
+         "title": "Analyze length of response",
+         "type": "bool",
+         "default": false
+       },
+       "show_transcripts": {
+         "title": "Add table of all responses",
+         "type": "bool",
+         "default": true
+       }
+     },
+     "chat_data": {
+       "system_message": {
+         "type": "str",
+         "default": "",
+         "help": "Optional system message to set the behavior of the AI overall."
+       },
+       "rating_prompt_template": {
+         "type": "str",
+         "default": "",
+         "help": "Template used to rate the response. Must contain {response}."
+       },
+       "messages": {
+         "type": "list",
+         "items": {
+           "role": {
+             "type": "str",
+             "choices": ["user", "assistant"],
+             "help": "The role of the message author."
+           },
+           "content": {
+             "type": "str",
+             "help": "The message content."
+           }
+         }
+       }
+     }
+   }
