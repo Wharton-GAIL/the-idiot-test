@@ -99,20 +99,18 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
             system_message = chat.get("system_message", "")
             rating_prompt = chat.get("rating_prompt_template", "")
 
-            # Add system prompt
+            # Add system message
             chat_records.append({
                 "Chat": f"Chat {idx}",
-                "Type": "System Prompt",
+                "Type": "System Message",
                 "Content": system_message
             })
 
-            # Add evaluation rubric if available
-            if rating_prompt:
-                chat_records.append({
-                    "Chat": f"Chat {idx}",
-                    "Type": "Evaluation Rubric",
-                    "Content": rating_prompt
-                })
+            chat_records.append({
+                "Chat": f"Chat {idx}",
+                "Type": "Evaluation Rubric",
+                "Content": rating_prompt
+            })
 
             # Add user prompts and assistant responses
             messages = chat.get("messages", [])
@@ -131,7 +129,6 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
                 elif role == "assistant":
                     # Replace blank responses with "[AI Responds]" to disambiguate
                     response_content = content if content else "[AI Responds]"
-                    # Add response
                     chat_records.append({
                         "Chat": f"Chat {idx}",
                         "Type": f"Response {prompt_counter}",
@@ -141,7 +138,7 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
         df_chat = pd.DataFrame(chat_records)
 
         # Define the desired order for 'Type'
-        initial_type_order = ["System Prompt", "Evaluation Rubric"]
+        initial_type_order = ["System Message", "Evaluation Rubric"]
         prompt_types = df_chat['Type'].str.extract(r'Prompt (\d+)').dropna()[0].astype(int).unique()
         prompt_types.sort()
         for num in prompt_types:
@@ -154,28 +151,15 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
         # Sort the DataFrame by Chat and then by the Type order
         df_chat = df_chat.sort_values(['Chat', 'Type'])
 
-        # Pivot the DataFrame to have 'Type' as rows and each chat as a separate column
-        pivot_df = df_chat.pivot(index='Type', columns='Chat', values='Content')
-
-        # Reset index to have 'Type' as a column
-        pivot_df.reset_index(inplace=True)
-
-        # Write the pivoted DataFrame to Excel
-        pivot_df.to_excel(writer, sheet_name='Chat Data', index=False, header=True)
+        # Write directly to Excel without pivoting
+        df_chat.to_excel(writer, sheet_name='Chat Data', index=False)
         worksheet_chat = writer.sheets['Chat Data']
 
         # Adjust column widths and formats
-        # First column: Auto-resize based on the longest text
-        max_length_type = df_chat['Type'].astype(str).map(len).max()
-        optimal_width_type = max_length_type + 2  # Adding padding
-        worksheet_chat.set_column('A:A', optimal_width_type, wrap_format)
+        worksheet_chat.set_column('A:A', 15, wrap_format)  # Chat column
+        worksheet_chat.set_column('B:B', 25, wrap_format)  # Type column
+        worksheet_chat.set_column('C:C', 75, wrap_format)  # Content column
 
-        # Subsequent columns: Set width to 75 and enable word wrap
-        for idx, chat in enumerate(sorted(df_chat['Chat'].unique()), start=2):
-            col_letter = xl_col_to_name(idx - 1)  # Adjusted index for zero-based columns
-            worksheet_chat.set_column(f'{col_letter}:{col_letter}', 75, wrap_format)
-
-    # Seek to the beginning of the stream
     output.seek(0)
     return output
 
@@ -231,7 +215,7 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
             chat_content = df_chat[chat_col].fillna('')
 
             # Extract system message
-            system_message = chat_content.get('System Prompt', '').strip()
+            system_message = chat_content.get('System Message', '').strip()
             chat['system_message'] = system_message
 
             # Extract evaluation rubric

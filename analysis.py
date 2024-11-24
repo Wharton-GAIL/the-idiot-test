@@ -2,9 +2,22 @@ import streamlit as st
 import statistics
 import base64
 import io
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 from tabulate import tabulate
+import pandas as pd
+from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as OpenPyXLImage
+from PIL import Image as PILImage
+import io
+import pandas as pd
+import base64
+from import_export import generate_settings_xlsx
+from openpyxl import load_workbook, Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as OpenPyXLImage
+from PIL import Image as PILImage
 
 def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
     total_cost = sum(chat_res["total_cost"] for chat_res in chat_results.values())
@@ -328,80 +341,95 @@ def generate_experiment_xlsx(
     chat_results,
     plot_base64
 ):
-    import pandas as pd
-    from io import BytesIO
-    from openpyxl import Workbook
-    from openpyxl.drawing.image import Image as XLImage
-    import base64
+    # Use the existing generate_settings_xlsx to create the initial BytesIO object
+    initial_output = generate_settings_xlsx(settings_dict, chat_data)
+    initial_output.seek(0)
 
-    # Create a new workbook
-    wb = Workbook()
-    ws_settings = wb.active
-    ws_settings.title = 'Settings'
+    # Load the workbook from the BytesIO object using openpyxl
+    workbook = load_workbook(initial_output)
 
-    # Write settings to the first sheet
-    row_num = 1
-    for key, value in settings_dict.items():
-        ws_settings.cell(row=row_num, column=1, value=key)
-        ws_settings.cell(row=row_num, column=2, value=value)
-        row_num += 1
+    # Add Analysis Data sheet
+    df_analysis = pd.DataFrame(analysis_data[1:], columns=analysis_data[0])
+    sheet_analysis = workbook.create_sheet('Analysis Data')
 
-    # Write chat data to a new sheet
-    ws_chat_data = wb.create_sheet(title='Chat Data')
-    row_num = 1
-    for chat_index, chat in enumerate(chat_data, start=1):
-        ws_chat_data.cell(row=row_num, column=1, value=f"Chat {chat_index}")
-        row_num += 1
-        ws_chat_data.cell(row=row_num, column=1, value='System Message')
-        ws_chat_data.cell(row=row_num, column=2, value=chat.get('system_message', ''))
-        row_num += 1
-        ws_chat_data.cell(row=row_num, column=1, value='Role')
-        ws_chat_data.cell(row=row_num, column=2, value='Content')
-        row_num += 1
-        for msg in chat.get('messages', []):
-            ws_chat_data.cell(row=row_num, column=1, value=msg['role'])
-            ws_chat_data.cell(row=row_num, column=2, value=msg['content'])
-            row_num += 1
-        row_num += 1  # Blank row between chats
+    # Write DataFrame to sheet
+    for r_idx, row in df_analysis.iterrows():
+        for c_idx, value in enumerate(row):
+            cell = sheet_analysis.cell(row=r_idx+2, column=c_idx+1, value=value)
+    # Write headers
+    for c_idx, header in enumerate(df_analysis.columns):
+        cell = sheet_analysis.cell(row=1, column=c_idx+1, value=header)
 
-    # Write analysis data to a new sheet
-    ws_analysis = wb.create_sheet(title='Analysis Data')
-    for row in analysis_data:
-        ws_analysis.append(row)
+    # Adjust column widths
+    for col in sheet_analysis.columns:
+        max_length = 0
+        column = col[0].column_letter  # Get the column name
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        sheet_analysis.column_dimensions[column].width = adjusted_width
 
-    # Add plot image if available
-    if plot_base64:
-        img_data = base64.b64decode(plot_base64)
-        from openpyxl.drawing.image import Image as XLImage
-        import io
+    # Transcripts Sheets
+    for chat_index, chat_result in chat_results.items():
+        sheet_name = f'Transcript Chat {chat_index}'
+        sheet_transcript = workbook.create_sheet(sheet_name)
 
-        # Create an in-memory bytes buffer for the image file
-        img_file = io.BytesIO(img_data)
-        img_file.seek(0)
-
-        # Create an image object
-        img = XLImage(img_file)
-        img.width = img.width * 0.5  # Adjust size if needed
-        img.height = img.height * 0.5
-
-        # Add the image to the worksheet
-        ws_analysis.add_image(img, f'A{len(analysis_data)+2}')
-
-    # Write transcripts to a new sheet
-    ws_transcripts = wb.create_sheet(title='Transcripts')
-    for chat_index in sorted(chat_results.keys()):
-        ws_transcripts.append([f"Chat {chat_index}"])
-        ws_transcripts.append([])  # Blank line
-        for iteration_idx, messages in enumerate(chat_results[chat_index]["messages_per_iteration"], start=1):
-            ws_transcripts.append([f"Iteration {iteration_idx}"])
-            ws_transcripts.append(['Role', 'Content'])
+        # Prepare data
+        df_transcripts_list = []
+        for iteration_index, messages in enumerate(chat_result['messages_per_iteration'], 1):
             for msg in messages:
-                ws_transcripts.append([msg['role'], msg['content']])
-            ws_transcripts.append(['', ''])  # Blank line between messages
-        ws_transcripts.append(['', ''])  # Blank line between chats
+                df_transcripts_list.append({
+                    'Iteration': iteration_index,
+                    'Role': msg['role'],
+                    'Content': msg['content']
+                })
+        df_transcripts = pd.DataFrame(df_transcripts_list)
 
-    # Save the workbook to a BytesIO object and return bytes
-    output = BytesIO()
-    wb.save(output)
-    xlsx_data = output.getvalue()
-    return xlsx_data
+        # Write headers
+        for c_idx, header in enumerate(df_transcripts.columns):
+            cell = sheet_transcript.cell(row=1, column=c_idx+1, value=header)
+
+        # Write data
+        for r_idx, row in df_transcripts.iterrows():
+            for c_idx, value in enumerate(row):
+                cell = sheet_transcript.cell(row=r_idx+2, column=c_idx+1, value=value)
+
+        # Adjust column widths
+        for col in sheet_transcript.columns:
+            max_length = 0
+            column = col[0].column_letter  # Get the column name
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            sheet_transcript.column_dimensions[column].width = adjusted_width
+
+    # Add Plot Image Sheet
+    if plot_base64:
+        img_sheet_name = "Analysis Plot"
+        # Decode the base64 image
+        img_data = base64.b64decode(plot_base64)
+        image_stream = io.BytesIO(img_data)
+
+        # Create an image object for openpyxl
+        img = OpenPyXLImage(image_stream)
+        img.width, img.height = img.width * 0.5, img.height * 0.5  # Adjust image size if necessary
+
+        # Add a new sheet for the plot image
+        worksheet_plot = workbook.create_sheet(title=img_sheet_name)
+        # Insert the image into the sheet
+        worksheet_plot.add_image(img, 'A1')
+
+    # Save the workbook to a new BytesIO object
+    final_output = io.BytesIO()
+    workbook.save(final_output)
+    final_output.seek(0)
+
+    return final_output

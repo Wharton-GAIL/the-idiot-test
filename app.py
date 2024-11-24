@@ -69,7 +69,7 @@ def get_api_key(cookie_name):
     else:
         return value
 
-def get_responses(messages, settings_response, system_prompt=None):
+def get_responses(messages, settings_response, system_message=None):
     total_steps = len(messages)
     logger.info(f"Fetching responses for {total_steps} messages:")
     logger.info(messages)
@@ -87,7 +87,7 @@ def get_responses(messages, settings_response, system_prompt=None):
                     completed_messages.copy(),
                     settings=settings_response,
                     return_pricing=True,
-                    system_prompt=system_prompt
+                    system_prompt=system_message
                 )
                 completed_messages.append({"role": "assistant", "content": response})
                 total_response_cost += response_cost  # Accumulate response cost
@@ -97,7 +97,7 @@ def get_responses(messages, settings_response, system_prompt=None):
         completed_messages.copy(),
         settings=settings_response,
         return_pricing=True,
-        system_prompt=system_prompt
+        system_prompt=system_message
     )
     completed_messages.append({"role": "assistant", "content": response})
     total_response_cost += response_cost  # Accumulate final response cost
@@ -437,7 +437,7 @@ def run_single_iteration(args):
         updated_messages, response_cost = get_responses(
             copy.deepcopy(chat_info["messages"]),
             settings_response,
-            system_prompt=chat_info["system_message"]
+            system_message=chat_info["system_message"]
         )
         last_response = updated_messages[-1]['content']
 
