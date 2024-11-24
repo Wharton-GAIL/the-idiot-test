@@ -156,8 +156,8 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
 
         # Reset index to have 'Type' as a column
         pivot_df.reset_index(inplace=True)
-        pivot_df.to_excel(writer, sheet_name='Chat Data', index=False, header=True)
-        worksheet_chat = writer.sheets['Chat Data']
+        pivot_df.to_excel(writer, sheet_name='Prompts', index=False, header=True)
+        worksheet_chat = writer.sheets['Prompts']
 
         # Adjust column widths and formats
         # First column: Auto-resize based on the longest text
@@ -186,7 +186,11 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
 
         # Read the 'Settings' sheet
         df_settings = pd.read_excel(
-            xlsx_file, sheet_name='Settings', header=None, names=['Title', 'Value'], skiprows=1
+            xlsx_file,
+            sheet_name='Settings',
+            header=None,
+            names=['Title', 'Value'],
+            skiprows=1
         )
 
         settings = {}
@@ -209,8 +213,8 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
         # Validate settings
         validate_settings(settings, settings_schema)
 
-        # Read the 'Chat Data' sheet
-        df_chat = pd.read_excel(xlsx_file, sheet_name='Chat Data')
+        # Read the 'Prompts' sheet (previously 'Chat Data')
+        df_chat = pd.read_excel(xlsx_file, sheet_name='Prompts')
 
         # Set 'Type' as the index
         df_chat.set_index('Type', inplace=True)
@@ -263,7 +267,7 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
             chat_data.append(chat)
 
         # Validate chat_data
-        validate_chat_data(chat_data, schema['chat_data'])
+        validate_chat_data(chat_data, chat_schema)
 
         settings['chat_data'] = chat_data
         return settings
