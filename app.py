@@ -14,7 +14,7 @@ import json
 
 from call_gpt import call_gpt
 from log_love import setup_logging
-from analysis import generate_analysis, create_html_report
+from analysis import generate_analysis, create_html_report, generate_experiment_xlsx
 from import_export import generate_settings_xlsx, import_settings_xlsx
 
 # Load the schema
@@ -585,12 +585,38 @@ def run_analysis(
         show_transcripts=show_transcripts,
     )
 
+    # Generate the XLSX data with results
+    xlsx_with_results = generate_experiment_xlsx(
+        settings_dict={
+            'number_of_iterations': st.session_state.get('number_of_iterations', 3),
+            'model_response': st.session_state.get('model_response', "gpt-4o-mini"),
+            'temperature_response': st.session_state.get('temperature_response', 1.0),
+            'model_rating': st.session_state.get('model_rating', "gpt-4o-mini"),
+            'temperature_rating': st.session_state.get('temperature_rating', 0.0),
+            'analyze_rating': st.session_state.get('analyze_rating', True),
+            'analyze_length': st.session_state.get('analyze_length', False),
+            'show_transcripts': st.session_state.get('show_transcripts', True)
+        },
+        chat_data=chat_data,
+        analysis_data=analysis_data,
+        chat_results=chat_results,
+        plot_base64=plot_base64
+    )
+
     # Download button for the HTML report
     st.download_button(
         label="Download Report as HTML",
         data=html_report,
         file_name="analysis_report.html",
         mime="text/html"
+    )
+
+    # Download button for the Experiment as XLSX
+    st.download_button(
+        label="Download Experiment as XLSX",
+        data=xlsx_with_results,
+        file_name="experiment_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
     # Display the HTML report in Streamlit

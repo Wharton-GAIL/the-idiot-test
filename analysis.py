@@ -320,3 +320,88 @@ def create_html_report(
     """
 
     return html_content
+
+def generate_experiment_xlsx(
+    settings_dict,
+    chat_data,
+    analysis_data,
+    chat_results,
+    plot_base64
+):
+    import pandas as pd
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XLImage
+    import base64
+
+    # Create a new workbook
+    wb = Workbook()
+    ws_settings = wb.active
+    ws_settings.title = 'Settings'
+
+    # Write settings to the first sheet
+    row_num = 1
+    for key, value in settings_dict.items():
+        ws_settings.cell(row=row_num, column=1, value=key)
+        ws_settings.cell(row=row_num, column=2, value=value)
+        row_num += 1
+
+    # Write chat data to a new sheet
+    ws_chat_data = wb.create_sheet(title='Chat Data')
+    row_num = 1
+    for chat_index, chat in enumerate(chat_data, start=1):
+        ws_chat_data.cell(row=row_num, column=1, value=f"Chat {chat_index}")
+        row_num += 1
+        ws_chat_data.cell(row=row_num, column=1, value='System Message')
+        ws_chat_data.cell(row=row_num, column=2, value=chat.get('system_message', ''))
+        row_num += 1
+        ws_chat_data.cell(row=row_num, column=1, value='Role')
+        ws_chat_data.cell(row=row_num, column=2, value='Content')
+        row_num += 1
+        for msg in chat.get('messages', []):
+            ws_chat_data.cell(row=row_num, column=1, value=msg['role'])
+            ws_chat_data.cell(row=row_num, column=2, value=msg['content'])
+            row_num += 1
+        row_num += 1  # Blank row between chats
+
+    # Write analysis data to a new sheet
+    ws_analysis = wb.create_sheet(title='Analysis Data')
+    for row in analysis_data:
+        ws_analysis.append(row)
+
+    # Add plot image if available
+    if plot_base64:
+        img_data = base64.b64decode(plot_base64)
+        from openpyxl.drawing.image import Image as XLImage
+        import io
+
+        # Create an in-memory bytes buffer for the image file
+        img_file = io.BytesIO(img_data)
+        img_file.seek(0)
+
+        # Create an image object
+        img = XLImage(img_file)
+        img.width = img.width * 0.5  # Adjust size if needed
+        img.height = img.height * 0.5
+
+        # Add the image to the worksheet
+        ws_analysis.add_image(img, f'A{len(analysis_data)+2}')
+
+    # Write transcripts to a new sheet
+    ws_transcripts = wb.create_sheet(title='Transcripts')
+    for chat_index in sorted(chat_results.keys()):
+        ws_transcripts.append([f"Chat {chat_index}"])
+        ws_transcripts.append([])  # Blank line
+        for iteration_idx, messages in enumerate(chat_results[chat_index]["messages_per_iteration"], start=1):
+            ws_transcripts.append([f"Iteration {iteration_idx}"])
+            ws_transcripts.append(['Role', 'Content'])
+            for msg in messages:
+                ws_transcripts.append([msg['role'], msg['content']])
+            ws_transcripts.append(['', ''])  # Blank line between messages
+        ws_transcripts.append(['', ''])  # Blank line between chats
+
+    # Save the workbook to a BytesIO object and return bytes
+    output = BytesIO()
+    wb.save(output)
+    xlsx_data = output.getvalue()
+    return xlsx_data
