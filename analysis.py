@@ -18,6 +18,8 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenPyXLImage
 from PIL import Image as PILImage
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Font
 
 def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
     total_cost = sum(chat_res["total_cost"] for chat_res in chat_results.values())
@@ -309,11 +311,9 @@ def create_html_report(
                 transcripts_html += f"<h4>Iteration {iteration_idx}</h4>"
                 conversation_html = "<div class='response-box'>"
                 for msg in messages:
-                    if msg['role'] == 'user':
-                        conversation_html += f"&#x1F9D1; {msg['content']}<br>"
-                    elif msg['role'] == 'assistant':
-                        content = msg['content'].strip() if msg['content'].strip() else '[AI Responds]'
-                        conversation_html += f"&#x1F916; {content}<br>"
+                    role_symbol = '👤' if msg['role'] == 'user' else '🤖'
+                    content = msg['content'].strip() if msg['content'].strip() else '[AI Responds]'
+                    conversation_html += f"{role_symbol} {content}<br>"
                 conversation_html += "</div>"
                 transcripts_html += conversation_html
 
@@ -352,65 +352,81 @@ def generate_experiment_xlsx(
     df_analysis = pd.DataFrame(analysis_data[1:], columns=analysis_data[0])
     sheet_analysis = workbook.create_sheet('Analysis Data')
 
-    # Write DataFrame to sheet
-    for r_idx, row in df_analysis.iterrows():
-        for c_idx, value in enumerate(row):
-            cell = sheet_analysis.cell(row=r_idx+2, column=c_idx+1, value=value)
-    # Write headers
-    for c_idx, header in enumerate(df_analysis.columns):
-        cell = sheet_analysis.cell(row=1, column=c_idx+1, value=header)
+    # Convert string values to numbers and apply formatting
+    for r_idx, row in enumerate(dataframe_to_rows(df_analysis, index=False, header=True), 1):
+        for c_idx, value in enumerate(row, 1):
+            cell = sheet_analysis.cell(row=r_idx, column=c_idx, value=value)
+            
+            # Skip header row and first column (metric names)
+            if r_idx > 1 and c_idx > 1:
+                if isinstance(value, str):
+                    if value == 'N/A':
+                        cell.value = 'N/A'
+                    elif value.startswith('$'):
+                        # Convert currency string to number
+                        cell.value = float(value.replace('$', ''))
+                        cell.number_format = '"$"#,##0.0000'
+                    else:
+                        # Convert other numeric strings to numbers
+                        try:
+                            cell.value = float(value)
+                            # Use 2 decimal places for ratings, 1 for lengths
+                            if 'Rating' in df_analysis.iloc[r_idx-1, 0]:
+                                cell.number_format = '0.00'
+                            else:
+                                cell.number_format = '0.0'
+                        except ValueError:
+                            # Keep as string if conversion fails
+                            pass
 
     # Adjust column widths
-    for col in sheet_analysis.columns:
-        max_length = 0
-        column = col[0].column_letter  # Get the column name
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        sheet_analysis.column_dimensions[column].width = adjusted_width
+    for column_cells in sheet_analysis.columns:
+        length = max(len(str(cell.value) if cell.value is not None else "") for cell in column_cells)
+        sheet_analysis.column_dimensions[column_cells[0].column_letter].width = length + 2
 
-    # Transcripts Sheets - Modified to sort by chat index
+    # Create a consolidated Transcripts sheet
+    sheet_transcripts = workbook.create_sheet('Transcripts')
+
+    # Add headers
+    sheet_transcripts.append(['Chat #', 'Iteration', 'Text'])
+
+    # Make the header bold
+    header_font = Font(bold=True)
+    for cell in sheet_transcripts[1]:  # First row contains the headers
+        cell.font = header_font
+
+    # Adjust column widths for headers
+    for col_idx, header in enumerate(['Chat #', 'Iteration', 'Text'], 1):
+        sheet_transcripts.column_dimensions[get_column_letter(col_idx)].width = len(header) + 2
+
+    # Prepare data for transcripts
     for chat_index in sorted(chat_results.keys()):
         chat_result = chat_results[chat_index]
-        sheet_name = f'Transcript Chat {chat_index}'
-        sheet_transcript = workbook.create_sheet(sheet_name)
+        messages_per_iteration = chat_result['messages_per_iteration']
+        ratings = chat_result.get('ratings', [])
+        rating_texts = chat_result.get('rating_texts', [])
 
-        # Prepare data
-        df_transcripts_list = []
-        for iteration_index, messages in enumerate(chat_result['messages_per_iteration'], 1):
+        for iteration_index, messages in enumerate(messages_per_iteration, 1):
+            # Append messages
             for msg in messages:
-                df_transcripts_list.append({
-                    'Iteration': iteration_index,
-                    'Role': msg['role'],
-                    'Content': msg['content']
-                })
-        df_transcripts = pd.DataFrame(df_transcripts_list)
+                content = f"{msg['content']}"
+                sheet_transcripts.append([f"Chat {chat_index}", iteration_index, content])
 
-        # Write headers
-        for c_idx, header in enumerate(df_transcripts.columns):
-            cell = sheet_transcript.cell(row=1, column=c_idx+1, value=header)
+            # Append rating after each iteration
+            if ratings and iteration_index <= len(ratings):
+                rating = ratings[iteration_index - 1]
+                rating_text = rating_texts[iteration_index - 1] if rating_texts else ''
+                rating_content = f"{rating} [verbatim rating: '{rating_text}']"
+                sheet_transcripts.append([f"Chat {chat_index}", iteration_index, rating_content])
 
-        # Write data
-        for r_idx, row in df_transcripts.iterrows():
-            for c_idx, value in enumerate(row):
-                cell = sheet_transcript.cell(row=r_idx+2, column=c_idx+1, value=value)
+            # Add an empty row for better readability between iterations
+            sheet_transcripts.append(['', '', ''])
 
-        # Adjust column widths
-        for col in sheet_transcript.columns:
-            max_length = 0
-            column = col[0].column_letter  # Get the column name
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            sheet_transcript.column_dimensions[column].width = adjusted_width
+    # Adjust column widths based on content
+    for column_cells in sheet_transcripts.columns:
+        length = max(len(str(cell.value) if cell.value is not None else "") for cell in column_cells)
+        column_letter = column_cells[0].column_letter
+        sheet_transcripts.column_dimensions[column_letter].width = min(length + 2, 50)  # Set a max width to prevent overly wide columns
 
     # Add Plot Image Sheet
     if plot_base64:
