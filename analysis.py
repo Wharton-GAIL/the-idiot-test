@@ -373,8 +373,9 @@ def generate_experiment_xlsx(
         adjusted_width = (max_length + 2)
         sheet_analysis.column_dimensions[column].width = adjusted_width
 
-    # Transcripts Sheets
-    for chat_index, chat_result in chat_results.items():
+    # Transcripts Sheets - Modified to sort by chat index
+    for chat_index in sorted(chat_results.keys()):
+        chat_result = chat_results[chat_index]
         sheet_name = f'Transcript Chat {chat_index}'
         sheet_transcript = workbook.create_sheet(sheet_name)
 
