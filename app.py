@@ -215,62 +215,90 @@ for key, setting in schema['settings'].items():
 # --- Save/Load Experiment Section ---
 st.sidebar.header("Save/Load Experiment")
 
-# File uploader for loading settings
-uploaded_file = st.sidebar.file_uploader(
-    "Load Experiment",
-    type=["xlsx"],
-    key='uploaded_settings_file'
-)
+# Initialize the settings_loaded flag if not present
+if 'settings_loaded' not in st.session_state:
+    st.session_state.settings_loaded = False
 
-if uploaded_file is not None:
-    try:
-        # Read the settings from the uploaded XLSX file
-        settings = import_settings_xlsx(uploaded_file)
+if not st.session_state.settings_loaded:
+    # File uploader for loading settings
+    uploaded_file = st.sidebar.file_uploader(
+        "Load Experiment",
+        type=["xlsx"],
+        key='uploaded_settings_file'
+    )
 
-        # Update default values in session state
-        for key in schema['settings'].keys():
-            if key in settings:
-                st.session_state[f'{key}_default'] = settings[key]
+    if uploaded_file is not None:
+        try:
+            # Import the necessary function
+            from import_export import import_settings_xlsx
 
-        # Update chat data
-        chat_data = settings.get('chat_data', [])
-        st.session_state.num_chats = len(chat_data) if chat_data else 1
+            # Read the settings from the uploaded XLSX file
+            settings = import_settings_xlsx(uploaded_file)
 
-        # Clear existing chat session state
-        chat_keys = [key for key in st.session_state.keys() if key.startswith('system_msg_chat_') or
-                                                     key.startswith('rating_prompt_template_chat_') or
-                                                     key.startswith('user_msg_chat_') or
-                                                     key.startswith('assistant_msg_chat_') or
-                                                     key.startswith('prompt_count_chat_')]
+            # Update default values in session state
+            for key in schema['settings'].keys():
+                if key in settings:
+                    st.session_state[f'{key}_default'] = settings[key]
+
+            # Update chat data
+            chat_data = settings.get('chat_data', [])
+            st.session_state.num_chats = len(chat_data) if chat_data else 1
+
+            # Clear existing chat session state
+            chat_keys = [
+                key for key in st.session_state.keys()
+                if key.startswith('system_msg_chat_') or
+                   key.startswith('rating_prompt_template_chat_') or
+                   key.startswith('user_msg_chat_') or
+                   key.startswith('assistant_msg_chat_') or
+                   key.startswith('prompt_count_chat_')
+            ]
+            for key in chat_keys:
+                del st.session_state[key]
+
+            # Reinitialize chat prompts based on the loaded settings
+            for chat_index, chat in enumerate(chat_data, start=1):
+                # Update system message
+                st.session_state[f'system_msg_chat_{chat_index}'] = chat.get('system_message', "")
+
+                # Update rating prompt template
+                if st.session_state.get('analyze_rating', True) and chat.get("rating_prompt_template"):
+                    st.session_state[f'rating_prompt_template_chat_{chat_index}'] = chat['rating_prompt_template']
+                else:
+                    st.session_state[f'rating_prompt_template_chat_{chat_index}'] = ""
+
+                # Initialize prompt count
+                prompt_count = sum(1 for msg in chat.get('messages', []) if msg['role'] == 'user')
+                st.session_state[f'prompt_count_chat_{chat_index}'] = prompt_count if prompt_count > 0 else 1
+
+                # Update messages
+                for idx_msg, msg in enumerate(chat.get('messages', []), start=1):
+                    if msg['role'] == 'user':
+                        st.session_state[f'user_msg_chat_{chat_index}_{idx_msg}'] = msg['content']
+                    elif msg['role'] == 'assistant':
+                        st.session_state[f'assistant_msg_chat_{chat_index}_{idx_msg}'] = msg['content']
+
+            # Set the settings_loaded flag to True to hide the uploader
+            st.session_state.settings_loaded = True
+
+        except Exception as e:
+            st.sidebar.error(f"Failed to load settings: {e}")
+else:
+    # Provide a button to reset the settings and allow re-uploading
+    if st.sidebar.button("Reset Settings", key="reset_settings_button"):
+        st.session_state.settings_loaded = False
+        # Optionally, clear all relevant session state variables
+        st.session_state.num_chats = 1
+        chat_keys = [
+            key for key in st.session_state.keys()
+            if key.startswith('system_msg_chat_') or
+               key.startswith('rating_prompt_template_chat_') or
+               key.startswith('user_msg_chat_') or
+               key.startswith('assistant_msg_chat_') or
+               key.startswith('prompt_count_chat_')
+        ]
         for key in chat_keys:
             del st.session_state[key]
-
-        # Reinitialize chat prompts based on the loaded settings
-        for chat_index, chat in enumerate(chat_data, start=1):
-            # Update system message
-            st.session_state[f'system_msg_chat_{chat_index}'] = chat.get('system_message', "")
-
-            # Update rating prompt template
-            if st.session_state.get('analyze_rating', True) and chat.get("rating_prompt_template"):
-                st.session_state[f'rating_prompt_template_chat_{chat_index}'] = chat['rating_prompt_template']
-            else:
-                st.session_state[f'rating_prompt_template_chat_{chat_index}'] = ""
-
-            # Initialize prompt count
-            prompt_count = sum(1 for msg in chat.get('messages', []) if msg['role'] == 'user')
-            st.session_state[f'prompt_count_chat_{chat_index}'] = prompt_count if prompt_count > 0 else 1
-
-            # Update messages
-            for msg in chat.get('messages', []):
-                if msg['role'] == 'user':
-                    prompt_idx = chat['messages'].index(msg) + 1
-                    st.session_state[f'user_msg_chat_{chat_index}_{prompt_idx}'] = msg['content']
-                elif msg['role'] == 'assistant':
-                    assistant_idx = chat['messages'].index(msg) + 1
-                    st.session_state[f'assistant_msg_chat_{chat_index}_{assistant_idx}'] = msg['content']
-
-    except Exception as e:
-        st.sidebar.error(f"Failed to load settings: {e}")
 
 # Initialize chats if not present
 for i in range(1, st.session_state.num_chats + 1):
