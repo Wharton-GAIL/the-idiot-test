@@ -151,14 +151,25 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
         # Sort the DataFrame by Chat and then by the Type order
         df_chat = df_chat.sort_values(['Chat', 'Type'])
 
-        # Write directly to Excel without pivoting
-        df_chat.to_excel(writer, sheet_name='Chat Data', index=False)
+        # Pivot the DataFrame to have 'Type' as rows and each chat as a separate column
+        pivot_df = df_chat.pivot(index='Type', columns='Chat', values='Content')
+
+        # Reset index to have 'Type' as a column
+        pivot_df.reset_index(inplace=True)
+        pivot_df.to_excel(writer, sheet_name='Chat Data', index=False, header=True)
         worksheet_chat = writer.sheets['Chat Data']
 
         # Adjust column widths and formats
-        worksheet_chat.set_column('A:A', 15, wrap_format)  # Chat column
-        worksheet_chat.set_column('B:B', 25, wrap_format)  # Type column
-        worksheet_chat.set_column('C:C', 75, wrap_format)  # Content column
+        # First column: Auto-resize based on the longest text
+        max_length_type = df_chat['Type'].astype(str).map(len).max()
+        optimal_width_type = max_length_type + 2
+        worksheet_chat.set_column('A:A', optimal_width_type, wrap_format)
+
+        # Subsequent columns: Set width to 75 and enable word wrap
+        for idx, chat in enumerate(sorted(df_chat['Chat'].unique()), start=2):
+        # Subsequent columns: Set width to 75 and enable word wrap
+            col_letter = xl_col_to_name(idx - 1)
+            worksheet_chat.set_column(f'{col_letter}:{col_letter}', 75, wrap_format)
 
     output.seek(0)
     return output
