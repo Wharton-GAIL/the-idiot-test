@@ -48,7 +48,7 @@ Before you begin, ensure you have the following:
 
 Follow the instructions below based on your operating system. If you've never written code or used a terminal/command prompt before, don't worry—we'll guide you through each step.
 
-### For macOS Users
+### 🍎 For macOS Users
 
 1. **Open Terminal**
    - Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
@@ -125,7 +125,7 @@ Follow the instructions below based on your operating system. If you've never wr
    pip install -r requirements.txt
    ```
 
-### For Windows Users
+### 🪟 For Windows Users
 
 1. **Install Git for Windows**
 
@@ -267,8 +267,6 @@ Follow the instructions below based on your operating system. If you've never wr
 ### Running the App
 
 #### 1. Ensure You Are in the Project Directory
-
-- **macOS/Linux/Windows**:
 
   ```bash
   cd path/to/the-idiot-test
