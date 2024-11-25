@@ -62,7 +62,6 @@ if os.name == 'nt':  # Windows
 else:  # Linux
     sys.path.append('../dan-tools')
 from log_love import setup_logging
-from openai_auth import setup_api_key
 
 logger = None
 logger = setup_logging(logger)
