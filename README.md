@@ -50,170 +50,142 @@ Follow the instructions below based on your operating system. If you've never wr
 
 ### For macOS Users
 
-#### 1. Open Terminal
-- Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
-- Type `Terminal` and press **Enter**.
+1. **Open Terminal**
+   - Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
+   - Type `Terminal` and press **Enter**.
 
-#### 2. Set Up GitHub Authentication
+2. **Set Up GitHub Authentication**
+   a. **Create a Personal Access Token (PAT)**:
+      - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+      - Click "Generate new token (classic)"
+      - Give it a name like "Idiot-Test App"
+      - Set expiration to "No Expiration"
+      - Check the box next to "repo"
+      - Click "Generate token" at the bottom
+      - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again! Make sure not to accidentally copy a space or extra characters.
 
-Before cloning the repository, you'll need to set up authentication with GitHub:
+   b. **Clone the Repository**:
+      ```bash
+      git clone https://github.com/danshapiro/the-idiot-test.git
+      ```
+      When prompted:
+      - For username: enter your GitHub username
+      - For password: paste the Personal Access Token you just created - NOT your GitHub password
 
-1. **Create a Personal Access Token (PAT)**:
-   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
-   - Click "Generate new token (classic)"
-   - Give it a name like "Idiot-Test App"
-   - Set expiration to "No Expiration"
-   - Check the box next to "repo"
-   - Click "Generate token" at the bottom
-   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again! Make sure not to accidentally copy a space or extra characters.
+   c. **Navigate to the project folder**:
+      ```bash
+      cd the-idiot-test
+      ```
 
-2. **Clone the Repository**:
+3. **Install Homebrew (Package Manager)**
+   a. **Install Homebrew**:
+      ```bash
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      ```
+      This may require you to enter your password. Use the password for your Mac.
+   
+   b. **Follow any on-screen instructions** to complete the installation.
+
+4. **Install Python 3**
    ```bash
-   git clone https://github.com/danshapiro/the-idiot-test.git
+   brew install python
    ```
-   When prompted:
-   - For username: enter your GitHub username
-   - For password: paste the Personal Access Token you just created - NOT your GitHub password
 
-3. **Navigate to the project folder**:
+5. **Create a Virtual Environment**
+   A virtual environment keeps project dependencies isolated.
    ```bash
-   cd the-idiot-test
+   python3 -m venv venv && source venv/bin/activate
    ```
+   After activation, your Terminal prompt will begin with `(venv)`.
 
-#### 2. Install Homebrew (Package Manager)
-
-**Homebrew** makes it easy to install and manage software on macOS.
-
-- **Install Homebrew**:
-  
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-  This may require you to enter your password. Use the password for your Mac.
-
-- **Follow any on-screen instructions** to complete the installation.
-
-#### 3. Install Python 3
-
-- **Install Python**:
-  
-  ```bash
-  brew install python
-  ```
-
-#### 3. Create a Virtual Environment
-
-A virtual environment keeps project dependencies isolated.
-
-- **Create and activate the virtual environment**:
-  
-  ```bash
-  python3 -m venv venv && source venv/bin/activate
-  ```
-  
-  After activation, your Terminal prompt will begin with `(venv)`.
-
-#### 4. Install Dependencies
-
-- **Upgrade pip**:
-  
-  ```bash
-  pip install --upgrade pip
-  ```
-
-- **Install required packages**:
-  
-  ```bash
-  pip install -r requirements.txt
-  ```
+6. **Install Dependencies**
+   a. **Upgrade pip**:
+      ```bash
+      pip install --upgrade pip
+      ```
+   
+   b. **Install required packages**:
+      ```bash
+      pip install -r requirements.txt
+      ```
 
 ### For Windows Users
 
-#### 1. Install Python 3
+1. **Install Python 3**
+   a. **Download Python**:
+      - Visit the [official Python website](https://www.python.org/downloads/windows/).
+      - Download the latest **Python 3** installer for Windows.
 
-- **Download Python**:
-  - Visit the [official Python website](https://www.python.org/downloads/windows/).
-  - Download the latest **Python 3** installer for Windows.
+   b. **Install Python**:
+      - Run the downloaded installer.
+      - **Important**: During installation, check the box that says **"Add Python to PATH"**.
+      - Follow the on-screen instructions to complete the installation.
 
-- **Install Python**:
-  - Run the downloaded installer.
-  - **Important**: During installation, check the box that says **"Add Python to PATH"**.
-  - Follow the on-screen instructions to complete the installation.
+   c. **Verify Installation**:
+      - Open **Command Prompt**:
+        - Press `Win + R`, type `cmd`, and press **Enter**.
+      - Type:
+        ```bash
+        python --version
+        ```
 
-- **Verify Installation**:
-  - Open **Command Prompt**:
-    - Press `Win + R`, type `cmd`, and press **Enter**.
-  - Type:
-  
-    ```bash
-    python --version
-    ```
+2. **Install Git and Set Up Authentication**
+   a. **Download and Install Git**:
+      - Visit the [official Git website](https://git-scm.com/download/win)
+      - Download the installer for Windows
+      - Run the installer and follow the default settings
+      - Verify installation by opening Command Prompt and typing:
+        ```bash
+        git --version
+        ```
 
-#### 2. Install Git and Set Up Authentication
+   b. **Create a Personal Access Token (PAT)**:
+      - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+      - Click "Generate new token (classic)"
+      - Give it a name like "Idiot Test App"
+      - Set expiration to 90 days
+      - Check the box next to "repo"
+      - Click "Generate token" at the bottom
+      - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
 
-1. **Download and Install Git**:
-   - Visit the [official Git website](https://git-scm.com/download/win)
-   - Download the installer for Windows
-   - Run the installer and follow the default settings
-   - Verify installation by opening Command Prompt and typing:
-     ```bash
-     git --version
-     ```
+   c. **Open Command Prompt**:
+      - Press `Win + R`, type `cmd`, and press **Enter**
 
-2. **Create a Personal Access Token (PAT)**:
-   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
-   - Click "Generate new token (classic)"
-   - Give it a name like "Idiot Test App"
-   - Set expiration to 90 days
-   - Check the box next to "repo"
-   - Click "Generate token" at the bottom
-   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
+   d. **Clone the Repository**:
+      ```bash
+      git clone https://github.com/danshapiro/the-idiot-test.git
+      ```
+      When prompted:
+      - For username: enter your GitHub username
+      - For password: paste your Personal Access Token (not your GitHub password)
 
-3. **Open Command Prompt**:
-   - Press `Win + R`, type `cmd`, and press **Enter**
+   e. **Navigate to the project folder**:
+      ```bash
+      cd the-idiot-test
+      ```
 
-4. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/danshapiro/the-idiot-test.git
-   ```
-   When prompted:
-   - For username: enter your GitHub username
-   - For password: paste your Personal Access Token (not your GitHub password)
+3. **Create a Virtual Environment**
+   a. **Create the virtual environment**:
+      ```bash
+      python -m venv venv
+      ```
+   
+   b. **Activate the virtual environment**:
+      ```bash
+      venv\Scripts\activate
+      ```
+      After activation, your Command Prompt will begin with `(venv)`.
 
-5. **Navigate to the project folder**:
-   ```bash
-   cd the-idiot-test
-   ```
-
-#### 3. Create a Virtual Environment (Recommended)
-
-- **Create the virtual environment**:
-  
-  ```bash
-  python -m venv venv
-  ```
-
-- **Activate the virtual environment**:
-  
-  ```bash
-  venv\Scripts\activate
-  ```
-  
-  After activation, your Command Prompt will begin with `(venv)`.
-
-#### 4. Install Dependencies
-
-- **Upgrade pip**:
-  
-  ```bash
-  pip install --upgrade pip
-  ```
-
-- **Install required packages**:
-  
-  ```bash
-  pip install -r requirements.txt
-  ```
+4. **Install Dependencies**
+   a. **Upgrade pip**:
+      ```bash
+      pip install --upgrade pip
+      ```
+   
+   b. **Install required packages**:
+      ```bash
+      pip install -r requirements.txt
+      ```
 
 ## Usage
 
