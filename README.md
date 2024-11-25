@@ -55,137 +55,212 @@ Follow the instructions below based on your operating system. If you've never wr
    - Type `Terminal` and press **Enter**.
 
 2. **Set Up GitHub Authentication**
+
    a. **Create a Personal Access Token (PAT)**:
-      - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
-      - Click "Generate new token (classic)"
-      - Give it a name like "Idiot-Test App"
-      - Set expiration to "No Expiration"
-      - Check the box next to "repo"
-      - Click "Generate token" at the bottom
-      - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again! Make sure not to accidentally copy a space or extra characters.
+
+   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+   - Click **"Generate new token (classic)"**
+   - Give it a name like **"Idiot Test App"**
+   - Set expiration to **"No Expiration"**
+   - Check the box next to **"repo"**
+   - Click **"Generate token"** at the bottom
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe—you won't be able to see it again! Make sure not to accidentally copy a space or extra characters.
 
    b. **Clone the Repository**:
-      ```bash
-      git clone https://github.com/danshapiro/the-idiot-test.git
-      ```
-      When prompted:
-      - For username: enter your GitHub username
-      - For password: paste the Personal Access Token you just created - NOT your GitHub password
 
-   c. **Navigate to the project folder**:
-      ```bash
-      cd the-idiot-test
-      ```
+   ```bash
+   git clone https://github.com/danshapiro/the-idiot-test.git
+   ```
+
+   When prompted:
+
+   - **Username**: Enter your GitHub username
+   - **Password**: Paste the Personal Access Token you just created—**NOT** your GitHub password
+
+   c. **Navigate to the Project Folder**:
+
+   ```bash
+   cd the-idiot-test
+   ```
 
 3. **Install Homebrew (Package Manager)**
+
    a. **Install Homebrew**:
-      ```bash
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      ```
-      This may require you to enter your password. Use the password for your Mac.
-   
-   b. **Follow any on-screen instructions** to complete the installation.
+
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+   This may require you to enter your password. Use the password for your Mac.
+
+   b. **Follow Any On-Screen Instructions** to complete the installation.
 
 4. **Install Python 3**
+
    ```bash
    brew install python
    ```
 
 5. **Create a Virtual Environment**
+
    A virtual environment keeps project dependencies isolated.
+
    ```bash
    python3 -m venv venv && source venv/bin/activate
    ```
+
    After activation, your Terminal prompt will begin with `(venv)`.
 
 6. **Install Dependencies**
+
    a. **Upgrade pip**:
-      ```bash
-      pip install --upgrade pip
-      ```
-   
-   b. **Install required packages**:
-      ```bash
-      pip install -r requirements.txt
-      ```
+
+   ```bash
+   pip install --upgrade pip
+   ```
+
+   b. **Install Required Packages**:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ### For Windows Users
 
-1. **Install Python 3**
-   a. **Download Python**:
-      - Visit the [official Python website](https://www.python.org/downloads/windows/).
-      - Download the latest **Python 3** installer for Windows.
+1. **Install Git for Windows**
 
-   b. **Install Python**:
-      - Run the downloaded installer.
-      - **Important**: During installation, check the box that says **"Add Python to PATH"**.
-      - Follow the on-screen instructions to complete the installation.
+   Git allows you to clone repositories and manage version control.
 
-   c. **Verify Installation**:
-      - Open **Command Prompt**:
-        - Press `Win + R`, type `cmd`, and press **Enter**.
-      - Type:
-        ```bash
-        python --version
-        ```
+   a. **Download Git**:
 
-2. **Install Git and Set Up Authentication**
-   a. **Download and Install Git**:
-      - Visit the [official Git website](https://git-scm.com/download/win)
-      - Download the installer for Windows
-      - Run the installer and follow the default settings
-      - Verify installation by opening Command Prompt and typing:
-        ```bash
-        git --version
-        ```
+   - Visit the [Git for Windows website](https://git-scm.com/download/win).
+   - Download the latest installer.
 
-   b. **Create a Personal Access Token (PAT)**:
-      - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
-      - Click "Generate new token (classic)"
-      - Give it a name like "Idiot Test App"
-      - Set expiration to 90 days
-      - Check the box next to "repo"
-      - Click "Generate token" at the bottom
-      - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
+   b. **Install Git**:
 
-   c. **Open Command Prompt**:
-      - Press `Win + R`, type `cmd`, and press **Enter**
+   - Run the downloaded installer.
+   - Use the **default settings** throughout the installation.
+   - **Note**: Ensure that the option **"Git Bash Here"** is enabled during installation.
 
-   d. **Clone the Repository**:
-      ```bash
-      git clone https://github.com/danshapiro/the-idiot-test.git
-      ```
-      When prompted:
-      - For username: enter your GitHub username
-      - For password: paste your Personal Access Token (not your GitHub password)
+2. **Open Git Bash**
 
-   e. **Navigate to the project folder**:
-      ```bash
-      cd the-idiot-test
-      ```
+   - After installation, right-click on your desktop or inside any folder.
+   - Select **"Git Bash Here"** from the context menu.
+   - This will open a terminal window similar to the macOS Terminal.
 
-3. **Create a Virtual Environment**
-   a. **Create the virtual environment**:
-      ```bash
-      python -m venv venv
-      ```
-   
-   b. **Activate the virtual environment**:
-      ```bash
-      venv\Scripts\activate
-      ```
-      After activation, your Command Prompt will begin with `(venv)`.
+3. **Set Up GitHub Authentication**
 
-4. **Install Dependencies**
+   a. **Create a Personal Access Token (PAT)**:
+
+   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+   - Click **"Generate new token (classic)"**
+   - Give it a name like **"Idiot Test App"**
+   - Set expiration to **"No Expiration"**
+   - Check the box next to **"repo"**
+   - Click **"Generate token"** at the bottom
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe—you won't be able to see it again!
+
+   b. **Configure Git with Your GitHub Credentials**:
+
+   ```bash
+   git config --global user.name "YourGitHubUsername"
+   git config --global user.email "YourEmail@example.com"
+   ```
+
+4. **Clone the Repository**
+
+   a. **Navigate to Your Desired Directory** (optional):
+
+   - By default, Git Bash starts in your home directory.
+   - To change the directory, use the `cd` command. For example:
+
+     ```bash
+     cd /c/Users/YourUsername/Documents
+     ```
+
+     Replace `YourUsername` with your actual Windows username.
+
+   b. **Clone the Repository**:
+
+   ```bash
+   git clone https://github.com/danshapiro/the-idiot-test.git
+   ```
+
+   When prompted:
+
+   - **Username**: Enter your GitHub username
+   - **Password**: Paste your Personal Access Token—**NOT** your GitHub password
+
+   c. **Navigate to the Project Folder**:
+
+   ```bash
+   cd the-idiot-test
+   ```
+
+5. **Install Python 3**
+
+   a. **Verify if Python is Already Installed**:
+
+   ```bash
+   python --version
+   ```
+
+   - If Python 3.x is installed, you can proceed to the next step.
+   - If not, continue with the installation.
+
+   b. **Download Python**:
+
+   - Visit the [official Python website](https://www.python.org/downloads/windows/).
+   - Download the latest **Python 3** installer for Windows.
+
+   c. **Install Python**:
+
+   - Run the downloaded installer.
+   - **Important**: During installation, check the box that says **"Add Python to PATH"**.
+   - Follow the on-screen instructions to complete the installation.
+
+   d. **Verify Installation**:
+
+   - Close and reopen **Git Bash**.
+   - Type:
+
+     ```bash
+     python --version
+     ```
+
+     This should display the Python version installed.
+
+6. **Create a Virtual Environment**
+
+   A virtual environment keeps project dependencies isolated.
+
+   a. **Create the Virtual Environment**:
+
+   ```bash
+   python -m venv venv
+   ```
+
+   b. **Activate the Virtual Environment**:
+
+   ```bash
+   source venv/Scripts/activate
+   ```
+
+   - After activation, your Git Bash prompt will begin with `(venv)`.
+
+7. **Install Dependencies**
+
    a. **Upgrade pip**:
-      ```bash
-      pip install --upgrade pip
-      ```
-   
-   b. **Install required packages**:
-      ```bash
-      pip install -r requirements.txt
-      ```
+
+   ```bash
+   pip install --upgrade pip
+   ```
+
+   b. **Install Required Packages**:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
@@ -193,36 +268,34 @@ Follow the instructions below based on your operating system. If you've never wr
 
 #### 1. Ensure You Are in the Project Directory
 
-- **macOS/Linux**:
-  
+- **macOS/Linux/Windows**:
+
   ```bash
   cd path/to/the-idiot-test
   ```
 
-- **Windows**:
-  
-  ```bash
-  cd path\to\the-idiot-test
-  ```
+  Replace `path/to` with the actual path to the project folder.
 
 #### 2. Activate the Virtual Environment
 
 - **macOS/Linux**:
-  
+
   ```bash
   source venv/bin/activate
   ```
 
-- **Windows**:
-  
+- **Windows** (using Git Bash):
+
   ```bash
-  venv\Scripts\activate
+  source venv/Scripts/activate
   ```
+
+  After activation, your prompt will begin with `(venv)`.
 
 #### 3. Run the Streamlit App
 
-- **Start the application**:
-  
+- **Start the Application**:
+
   ```bash
   streamlit run app.py
   ```
@@ -233,11 +306,11 @@ Follow the instructions below based on your operating system. If you've never wr
 
 - **Open your web browser**.
 - **Navigate to** the URL displayed in the terminal, typically:
-  
+
   ```
   http://localhost:8501
   ```
-  
+
   If the app doesn't open automatically, copy and paste the URL into your browser.
 
 ### Application Overview
@@ -265,20 +338,20 @@ Adjust the settings to customize your analysis.
 - **Number of Iterations**:
   - Choose how many times each prompt should be run (1 to 50).
   - More iterations provide better statistical significance but take longer.
-  
+
 - **Model for Response Generation**:
   - Select the AI model for generating responses (e.g., `gpt-4`, `gpt-3.5-turbo`).
   - **Note**: Availability of models depends on your API access.
-  
+
 - **Temperature for Response Generation**:
   - Controls the randomness of the responses.
   - Values range from `0.0` (deterministic) to `1.0` (most random).
   - Recommended to keep at `1.0` for diverse responses.
-  
+
 - **Model for Rating**:
   - Choose the AI model used to rate the responses.
   - Typically a faster, less expensive model is sufficient.
-  
+
 - **Temperature for Rating**:
   - Recommended to keep at `0.0` for consistent ratings.
 
@@ -287,7 +360,7 @@ Adjust the settings to customize your analysis.
 - **Analyze Length of Response**:
   - Toggle **ON** to include response length in the evaluation.
   - Useful for testing prompts that aim for longer or shorter responses.
-  
+
 - **Add a Table of All Responses**:
   - Toggle **ON** to display a table of all raw responses.
   - Helps in reviewing each individual response.
@@ -299,10 +372,10 @@ Set up the prompts you wish to test.
 - **Control Message**:
   - Enter your primary prompt in the **"Control Message"** field.
   - You can add multiple message pairs if needed.
-  
+
 - **Experimental Message**:
   - Enter the alternative prompt you want to compare against the control.
-  
+
 - **Add Message Pair**:
   - Click this button to add more message pairs if your prompts involve back-and-forth interaction.
 
@@ -313,14 +386,14 @@ Customize how the responses are evaluated.
 - **Rating Prompt Template for Control Messages**:
   - Provide a rubric or set of instructions that tells the AI how to rate the responses.
   - **Example**:
-  
+
     ```
     Evaluate the response for clarity and completeness. Provide a rating between [0] (poor) and [10] (excellent).
     ```
-  
+
 - **Rating Prompt Template for Experimental Messages**:
   - Similar to the control, but can be adjusted if you want different evaluation criteria.
-  
+
 - **Important**:
   - Include `{response}` in your templates where you want the AI's response to be inserted.
   - Ensure the AI is instructed to provide a rating enclosed in brackets, like `[7]`.
@@ -337,10 +410,10 @@ Customize how the responses are evaluated.
 
 - **Statistical Summary**:
   - Average rating, median rating, standard deviation, etc.
-  
+
 - **Charts and Graphs**:
   - Visual representations of response lengths and ratings distributions.
-  
+
 - **Response Table** (if enabled):
   - A table listing all individual responses and their respective ratings.
 
@@ -355,18 +428,18 @@ Customize how the responses are evaluated.
 - **Streamlit Command Not Found**:
   - Ensure the virtual environment is activated.
   - Verify that `streamlit` is installed by running `pip show streamlit`.
-  
+
 - **API Errors**:
   - Double-check your API keys.
   - Ensure you have enough quota or credits with the API provider.
-  
+
 - **Module Not Found Errors**:
   - Install missing packages:
-  
+
     ```bash
     pip install package-name
     ```
-  
+
 - **General Issues**:
   - Make sure all steps were followed correctly.
   - Search for error messages online or consult the project repository for issues.
