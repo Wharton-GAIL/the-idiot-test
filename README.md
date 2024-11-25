@@ -50,20 +50,34 @@ Follow the instructions below based on your operating system. If you've never wr
 
 ### For macOS Users
 
-#### 1. Clone the Repository
+#### 1. Set Up GitHub Authentication
+
+Before cloning the repository, you'll need to set up authentication with GitHub:
+
+1. **Create a Personal Access Token (PAT)**:
+   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+   - Click "Generate new token (classic)"
+   - Give it a name like "Idiot Test App"
+   - Set expiration to 90 days
+   - Check the box next to "repo"
+   - Click "Generate token" at the bottom
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
+
+2. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/danshapiro/the-idiot-test.git
+   ```
+   When prompted:
+   - For username: enter your GitHub username
+   - For password: paste your Personal Access Token (not your GitHub password)
+
+#### 2. Clone the Repository
 
 Cloning the repository will set up the project directory on your local machine.
 
 - **Open Terminal**:
   - Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
   - Type `Terminal` and press **Enter**.
-
-- **Clone the repository**:
-  ```bash
-  git clone https://github.com/danshapiro/the-idiot-test.git
-  ```
-  
-  > **Note**: If git is not installed, macOS will automatically prompt you to install the Xcode Command Line Tools, which includes git. Click "Install" when prompted and wait for the installation to complete. This may take a few minutes.
 
 - **Navigate to the project folder**:
   ```bash
@@ -117,6 +131,27 @@ A virtual environment keeps project dependencies isolated.
   ```
 
 ### For Windows Users
+
+#### 1. Set Up GitHub Authentication
+
+Before cloning the repository, you'll need to set up authentication with GitHub:
+
+1. **Create a Personal Access Token (PAT)**:
+   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+   - Click "Generate new token (classic)"
+   - Give it a name like "Idiot Test App"
+   - Set expiration to 90 days
+   - Check the box next to "repo"
+   - Click "Generate token" at the bottom
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
+
+2. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/danshapiro/the-idiot-test.git
+   ```
+   When prompted:
+   - For username: enter your GitHub username
+   - For password: paste your Personal Access Token (not your GitHub password)
 
 #### 1. Install Python 3
 
