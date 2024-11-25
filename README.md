@@ -50,18 +50,22 @@ Follow the instructions below based on your operating system. If you've never wr
 
 ### For macOS Users
 
-#### 1. Set Up GitHub Authentication
+#### 1. Open Terminal
+- Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
+- Type `Terminal` and press **Enter**.
+
+#### 2. Set Up GitHub Authentication
 
 Before cloning the repository, you'll need to set up authentication with GitHub:
 
 1. **Create a Personal Access Token (PAT)**:
    - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
    - Click "Generate new token (classic)"
-   - Give it a name like "Idiot Test App"
-   - Set expiration to 90 days
+   - Give it a name like "Idiot-Test App"
+   - Set expiration to "No Expiration"
    - Check the box next to "repo"
    - Click "Generate token" at the bottom
-   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again! Make sure not to accidentally copy a space or extra characters.
 
 2. **Clone the Repository**:
    ```bash
@@ -69,20 +73,12 @@ Before cloning the repository, you'll need to set up authentication with GitHub:
    ```
    When prompted:
    - For username: enter your GitHub username
-   - For password: paste your Personal Access Token (not your GitHub password)
+   - For password: paste the Personal Access Token you just created - NOT your GitHub password
 
-#### 2. Clone the Repository
-
-Cloning the repository will set up the project directory on your local machine.
-
-- **Open Terminal**:
-  - Click on the **Spotlight Search** (🔍) in the top-right corner or press `Command (⌘) + Space`.
-  - Type `Terminal` and press **Enter**.
-
-- **Navigate to the project folder**:
-  ```bash
-  cd the-idiot-test
-  ```
+3. **Navigate to the project folder**:
+   ```bash
+   cd the-idiot-test
+   ```
 
 #### 2. Install Homebrew (Package Manager)
 
@@ -93,6 +89,7 @@ Cloning the repository will set up the project directory on your local machine.
   ```bash
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   ```
+  This may require you to enter your password. Use the password for your Mac.
 
 - **Follow any on-screen instructions** to complete the installation.
 
@@ -104,7 +101,7 @@ Cloning the repository will set up the project directory on your local machine.
   brew install python
   ```
 
-#### 3. Create a Virtual Environment (Recommended)
+#### 3. Create a Virtual Environment
 
 A virtual environment keeps project dependencies isolated.
 
@@ -132,27 +129,6 @@ A virtual environment keeps project dependencies isolated.
 
 ### For Windows Users
 
-#### 1. Set Up GitHub Authentication
-
-Before cloning the repository, you'll need to set up authentication with GitHub:
-
-1. **Create a Personal Access Token (PAT)**:
-   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
-   - Click "Generate new token (classic)"
-   - Give it a name like "Idiot Test App"
-   - Set expiration to 90 days
-   - Check the box next to "repo"
-   - Click "Generate token" at the bottom
-   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
-
-2. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/danshapiro/the-idiot-test.git
-   ```
-   When prompted:
-   - For username: enter your GitHub username
-   - For password: paste your Personal Access Token (not your GitHub password)
-
 #### 1. Install Python 3
 
 - **Download Python**:
@@ -173,53 +149,43 @@ Before cloning the repository, you'll need to set up authentication with GitHub:
     python --version
     ```
 
-#### 2. Install Git
+#### 2. Install Git and Set Up Authentication
 
-- **Download Git**:
-  - Visit the [official Git website](https://git-scm.com/download/win).
-  - Download the installer for Windows.
+1. **Download and Install Git**:
+   - Visit the [official Git website](https://git-scm.com/download/win)
+   - Download the installer for Windows
+   - Run the installer and follow the default settings
+   - Verify installation by opening Command Prompt and typing:
+     ```bash
+     git --version
+     ```
 
-- **Install Git**:
-  - Run the installer and follow the default settings unless you have specific preferences.
+2. **Create a Personal Access Token (PAT)**:
+   - Go to [GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)](https://github.com/settings/tokens)
+   - Click "Generate new token (classic)"
+   - Give it a name like "Idiot Test App"
+   - Set expiration to 90 days
+   - Check the box next to "repo"
+   - Click "Generate token" at the bottom
+   - **IMPORTANT**: Copy the token immediately and save it somewhere safe - you won't be able to see it again!
 
-- **Verify Installation**:
-  - Open **Command Prompt** and type:
-  
-    ```bash
-    git --version
-    ```
+3. **Open Command Prompt**:
+   - Press `Win + R`, type `cmd`, and press **Enter**
 
-#### 3. Open Command Prompt
+4. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/danshapiro/the-idiot-test.git
+   ```
+   When prompted:
+   - For username: enter your GitHub username
+   - For password: paste your Personal Access Token (not your GitHub password)
 
-- Press `Win + R`, type `cmd`, and press **Enter**.
+5. **Navigate to the project folder**:
+   ```bash
+   cd the-idiot-test
+   ```
 
-#### 4. Clone the Repository
-
-You can obtain the project files in two ways:
-
-- **Option A: Using Git (Recommended)**
-  - **Clone the repository**:
-  
-    ```bash
-    git clone https://github.com/danshapiro/the-idiot-test.git
-    ```
-  
-  - **Navigate to the project folder**:
-  
-    ```bash
-    cd the-idiot-test
-    ```
-
-- **Option B: Download ZIP File**
-  - **Download** the ZIP file from the [GitHub repository](https://github.com/danshapiro/the-idiot-test).
-  - **Extract** the ZIP file to your desired location.
-  - **Navigate to the project folder** in Command Prompt:
-  
-    ```bash
-    cd path\to\the-idiot-test
-    ```
-
-#### 5. Create a Virtual Environment (Recommended)
+#### 3. Create a Virtual Environment (Recommended)
 
 - **Create the virtual environment**:
   
@@ -235,7 +201,7 @@ You can obtain the project files in two ways:
   
   After activation, your Command Prompt will begin with `(venv)`.
 
-#### 6. Install Dependencies
+#### 4. Install Dependencies
 
 - **Upgrade pip**:
   
