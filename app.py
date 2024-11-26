@@ -632,8 +632,6 @@ def run_analysis(
         st.error(f"Some iterations failed due to errors:\n\n{error_messages}")
         return  # Exit the function to prevent further processing
 
-    st.success("Analysis complete!", icon="✅")
-
     # Proceed with analysis only if there are successful results
     if not results:
         st.error("No successful results to analyze.")
@@ -707,24 +705,11 @@ def run_analysis(
         plot_base64=plot_base64
     )
 
-    # Download button for the HTML report
-    st.download_button(
-        label="Download Report as HTML",
-        data=html_report,
-        file_name="analysis_report.html",
-        mime="text/html"
-    )
-
-    # Download button for the Experiment as XLSX
-    st.download_button(
-        label="Download Experiment as XLSX",
-        data=xlsx_with_results,
-        file_name="experiment_results.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # Display the HTML report in Streamlit
-    st.components.v1.html(html_report, height=1000, scrolling=True)
+    # Store the results in session state
+    st.session_state['analysis_html_report'] = html_report
+    st.session_state['analysis_xlsx_data'] = xlsx_with_results
+    st.session_state['analysis_total_cost'] = total_cost  # If you want to display total cost
+    st.session_state['analysis_complete'] = True  # Flag to indicate analysis is complete
 
 # Create two columns for "Run Analysis" and "Add Chat" buttons
 col1, col2 = st.columns([3, 1])  # Adjust the width ratios as needed
@@ -765,25 +750,47 @@ with col1:
             st.error("All prompt fields must contain text. Please fill in any empty prompts.")
         else:
             with st.spinner("Running analysis..."):
-                # Run the analysis
-                try:
-                    run_analysis(
-                        openai_api_key=st.session_state.get('openai_api_key', ""),
-                        anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
-                        gemini_api_key=st.session_state.get('gemini_api_key', ""),
-                        chat_data=chat_data,
-                        number_of_iterations=st.session_state.get('number_of_iterations', 3),
-                        model_response=st.session_state.get('model_response', "gpt-4o-mini"),
-                        temperature_response=st.session_state.get('temperature_response', 1.0),
-                        model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
-                        temperature_rating=st.session_state.get('temperature_rating', 0.0),
-                        analyze_rating=st.session_state.get('analyze_rating', True),
-                        analyze_length=st.session_state.get('analyze_length', False),
-                        show_transcripts=st.session_state.get('show_transcripts', True)
-                    )
-                except Exception as e:
-                    logger.error(f"Unexpected error: {e}")
-                    st.error(f"An unexpected error occurred: {e}")
+                # Run the analysis function (results will be stored in session_state)
+                run_analysis(
+                    openai_api_key=st.session_state.get('openai_api_key', ""),
+                    anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
+                    gemini_api_key=st.session_state.get('gemini_api_key', ""),
+                    chat_data=chat_data,
+                    number_of_iterations=st.session_state.get('number_of_iterations', 3),
+                    model_response=st.session_state.get('model_response', "gpt-4o-mini"),
+                    temperature_response=st.session_state.get('temperature_response', 1.0),
+                    model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
+                    temperature_rating=st.session_state.get('temperature_rating', 0.0),
+                    analyze_rating=st.session_state.get('analyze_rating', True),
+                    analyze_length=st.session_state.get('analyze_length', False),
+                    show_transcripts=st.session_state.get('show_transcripts', True)
+                )
+
+# Outside the button's if-block, check if analysis is complete and display results
+if st.session_state.get('analysis_complete', False):
+    st.success("Analysis complete!", icon="✅")
+    
+    # Display the total cost if needed
+    total_cost = st.session_state.get('analysis_total_cost', 0.0)
+    st.write(f"**Total Cost:** ${total_cost:.4f}")
+    
+    # Provide download buttons for the report and experiment results
+    st.download_button(
+        label="Download Report as HTML",
+        data=st.session_state['analysis_html_report'],
+        file_name="analysis_report.html",
+        mime="text/html"
+    )
+
+    st.download_button(
+        label="Download Experiment as XLSX",
+        data=st.session_state['analysis_xlsx_data'],
+        file_name="experiment_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # Display the HTML report within the Streamlit app
+    st.components.v1.html(st.session_state['analysis_html_report'], height=1000, scrolling=True)
 
 def add_chat():
     st.session_state.num_chats += 1
