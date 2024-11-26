@@ -440,6 +440,17 @@ def get_rating_prompt(response, rating_prompt_template):
 
 def rate_response(response, settings_rating, rating_prompt_template):
     rating_prompt = get_rating_prompt(response, rating_prompt_template)
+    
+    # Handle stop sequences differently based on model provider
+    if settings_rating["model"].startswith("claude"):
+        settings_rating.update({
+            "stop_sequence": ["]"]  # Anthropic uses "stop"
+        })
+    else:
+        settings_rating.update({
+            "stop_sequences": ["]"]  # OpenAI/others use "stop_sequences"
+        })
+        
     rating_response, rating_cost = call_gpt(rating_prompt, settings=settings_rating, return_pricing=True)
     if not rating_response.strip().endswith(']'):
         rating_response += "]"

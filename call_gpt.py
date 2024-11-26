@@ -439,8 +439,17 @@ def handle_error(error: Exception, model: str) -> bool:
     else:
         raise ValueError(f"Unknown model category in handle_error: {model}")
 
+    # Add special handling for HTTP errors with specific status codes
     if isinstance(error, requests.exceptions.HTTPError):
         response_text = getattr(error.response, 'text', '')
+        status_code = error.response.status_code
+        
+        # Don't retry 400 Bad Request errors
+        if status_code == 400:
+            logger.error(f"Bad Request error using {model}: {str(error)}. Response: {response_text}. Aborting.")
+            return True
+            
+        # Don't retry if content filtering blocked the output
         if "Output blocked by content filtering policy" in response_text:
             logger.error(f"Content filtering policy error using {model}: {str(error)}. Aborting.")
             return True

@@ -243,7 +243,7 @@ Follow the instructions below based on your operating system. If you've never wr
    b. **Activate the Virtual Environment**:
 
    ```bash
-   source venv/Scripts/activate
+   venv\Scripts\activate.bat
    ```
 
    - After activation, your Git Bash prompt will begin with `(venv)`.
@@ -282,10 +282,10 @@ Follow the instructions below based on your operating system. If you've never wr
   source venv/bin/activate
   ```
 
-- **Windows** (using Git Bash):
+- **Windows**:
 
   ```bash
-  source venv/Scripts/activate
+  venv\Scripts\activate.bat
   ```
 
   After activation, your prompt will begin with `(venv)`.
