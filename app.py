@@ -83,22 +83,28 @@ def get_responses(messages, settings_response, system_message=None):
             if message['content'].strip():
                 completed_messages.append(message)
             else:
-                response, response_cost = call_gpt(
-                    completed_messages.copy(),
-                    settings=settings_response,
-                    return_pricing=True,
-                    system_prompt=system_message
-                )
+                kwargs = {
+                    "query": completed_messages.copy(),
+                    "settings": settings_response,
+                    "return_pricing": True,
+                }
+                if system_message and system_message.strip():
+                    kwargs["system_prompt"] = system_message
+
+                response, response_cost = call_gpt(**kwargs)
                 completed_messages.append({"role": "assistant", "content": response})
                 total_response_cost += response_cost  # Accumulate response cost
 
     # Final assistant response
-    response, response_cost = call_gpt(
-        completed_messages.copy(),
-        settings=settings_response,
-        return_pricing=True,
-        system_prompt=system_message
-    )
+    kwargs = {
+        "query": completed_messages.copy(),
+        "settings": settings_response,
+        "return_pricing": True,
+    }
+    if system_message and system_message.strip():
+        kwargs["system_prompt"] = system_message
+
+    response, response_cost = call_gpt(**kwargs)
     completed_messages.append({"role": "assistant", "content": response})
     total_response_cost += response_cost  # Accumulate final response cost
 
@@ -678,6 +684,23 @@ with col1:
                     break
             if has_empty_prompt:
                 break
+
+        # --- Validation for o1 models and system messages ---
+        model_response = st.session_state.get('model_response', "gpt-4o-mini")
+        model_supports_system_message = not model_response.startswith("o1")
+
+        if not model_supports_system_message:
+            # Check if any system message is non-empty
+            any_system_message = any(
+                st.session_state.get(f'system_msg_chat_{i}', '').strip()
+                for i in range(1, st.session_state.num_chats + 1)
+            )
+            if any_system_message:
+                st.error(
+                    "The o1 model you have chosen doesn't support a system message. "
+                    "Delete the system message or choose a different model."
+                )
+                st.stop()  # Prevent further execution
 
         if has_empty_prompt:
             st.error("All prompt fields must contain text. Please fill in any empty prompts.")
