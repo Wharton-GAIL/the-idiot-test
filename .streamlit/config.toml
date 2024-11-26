@@ -1,0 +1,17 @@
+# .streamlit/config.toml
+
+[theme]
+base = "dark"
+primaryColor = "#1E90FF"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#FFFFFF"
+font = "sans serif"
+
+# Optional: Hide the main menu and footer
+# Uncomment the lines below if you want to hide them
+# [server]
+# headless = true
+
+# [client]
+# csp = "default-src 'self'; img-src *; script-src 'self' https://cdn.jsdelivr.net"
