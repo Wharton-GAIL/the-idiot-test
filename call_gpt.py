@@ -457,6 +457,7 @@ def send_llm_request(
 
 def handle_error(error: Exception, model: str) -> bool:
     gpt_error_messages = {
+        (ValueError,): "ValueError encountered. Aborting. Check the request parameters.",
         (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
         openai.APIConnectionError: "API Connection error. Retrying after a brief wait.",
         openai.APITimeoutError: "API Timeout error. Retrying after a brief wait.",
@@ -470,6 +471,7 @@ def handle_error(error: Exception, model: str) -> bool:
         openai.UnprocessableEntityError: "Unprocessable Entity error. Please try the request again."
     }
     claude_error_messages = {
+        (ValueError,): "ValueError encountered. Aborting. Check the request parameters.",
         (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
         requests.exceptions.HTTPError: "HTTP error. Retrying after a brief wait.",
         requests.exceptions.ConnectionError: "Connection error. Retrying after a brief wait.",
@@ -478,6 +480,7 @@ def handle_error(error: Exception, model: str) -> bool:
         requests.exceptions.RequestException: "Request Exception. Aborting. Check the request."
     }
     gemini_error_messages = {
+        (ValueError,): "ValueError encountered. Aborting. Check the request parameters.",
         (FunctionTimedOut, ConnectTimeout, ReadTimeout): "Timeout error. Retrying after a brief wait.",
         google.api_core.exceptions.InvalidArgument: "Invalid Argument error. Aborting. Check the request parameters.",
         google.api_core.exceptions.PermissionDenied: "Permission Denied error. Aborting. Check the API key or permissions.",
