@@ -141,6 +141,14 @@ def initialize_session_state_from_schema(schema):
     if 'default_experiment_prompt' not in st.session_state:
         st.session_state['default_experiment_prompt'] = "Call me a bozo."
 
+    # Initialize system messages for existing chats
+    for chat_index in range(1, st.session_state.num_chats + 1):
+        if f'system_msg_chat_{chat_index}' not in st.session_state:
+            if chat_index == 1:
+                st.session_state[f'system_msg_chat_{chat_index}'] = default_control_system_message
+            else:
+                st.session_state[f'system_msg_chat_{chat_index}'] = default_experiment_system_message
+
 initialize_session_state_from_schema(schema)
 
 # --- API Keys Section ---
@@ -371,17 +379,9 @@ for idx, col in enumerate(columns):
     with col:
         st.header(f"Chat {chat_index}")
 
-        # Assign default system message based on chat index
-        if f'system_msg_chat_{chat_index}' not in st.session_state:
-            if chat_index == 1:
-                st.session_state[f'system_msg_chat_{chat_index}'] = default_control_system_message
-            else:
-                st.session_state[f'system_msg_chat_{chat_index}'] = default_experiment_system_message
-
-        # System message
+        # System message without the 'value' parameter
         system_message = st.text_area(
             f"System Message (Chat {chat_index})",
-            value=st.session_state[f'system_msg_chat_{chat_index}'],
             height=70,
             help="Optional system message to set the behavior of the AI overall.",
             key=f'system_msg_chat_{chat_index}'
