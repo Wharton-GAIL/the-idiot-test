@@ -69,6 +69,11 @@ def get_api_key(cookie_name):
     else:
         return value
 
+# Load API keys from cookies into session state ###
+for api_key in ['openai_api_key', 'anthropic_api_key', 'gemini_api_key']:
+    if api_key not in st.session_state:
+        st.session_state[api_key] = get_api_key(api_key)
+
 def get_responses(messages, settings_response, system_message=None):
     total_steps = len(messages)
     logger.info(f"Fetching responses for {total_steps} messages:")
@@ -87,7 +92,11 @@ def get_responses(messages, settings_response, system_message=None):
                     "query": completed_messages.copy(),
                     "settings": settings_response,
                     "return_pricing": True,
+                    "openai_api_key": settings_response.get("openai_api_key", ""),
+                    "anthropic_api_key": settings_response.get("anthropic_api_key", ""),
+                    "google_api_key": settings_response.get("gemini_api_key", "")
                 }
+
                 if system_message and system_message.strip():
                     kwargs["system_prompt"] = system_message
 
@@ -100,6 +109,9 @@ def get_responses(messages, settings_response, system_message=None):
         "query": completed_messages.copy(),
         "settings": settings_response,
         "return_pricing": True,
+        "openai_api_key": settings_response.get("openai_api_key", ""),
+        "anthropic_api_key": settings_response.get("anthropic_api_key", ""),
+        "google_api_key": settings_response.get("gemini_api_key", "")
     }
     if system_message and system_message.strip():
         kwargs["system_prompt"] = system_message
@@ -170,6 +182,10 @@ with st.sidebar.expander("API Keys", expanded=not are_api_keys_valid):
         save_api_key("openai_api_key", openai_api_key_input)
         save_api_key("anthropic_api_key", anthropic_api_key_input)
         save_api_key("gemini_api_key", gemini_api_key_input)
+        # Update session_state with the saved keys ***
+        st.session_state['openai_api_key'] = openai_api_key_input
+        st.session_state['anthropic_api_key'] = anthropic_api_key_input
+        st.session_state['gemini_api_key'] = gemini_api_key_input
         st.success("API keys saved successfully!", icon="✅")
 
 # --- Settings Section ---
@@ -372,7 +388,7 @@ for idx, col in enumerate(columns):
         )
 
         # Button to add message pair
-        if st.button("Add Message Pair", key=f'add_prompt_chat_{chat_index}'):
+        if st.button("Add Message Pair ⬇️", key=f'add_prompt_chat_{chat_index}'):
             if st.session_state[f'prompt_count_chat_{chat_index}'] < 5:
                 st.session_state[f'prompt_count_chat_{chat_index}'] += 1
 
@@ -457,7 +473,16 @@ def rate_response(response, settings_rating, rating_prompt_template):
             "stop_sequences": ["]"]  # OpenAI/others use "stop_sequences"
         })
         
-    rating_response, rating_cost = call_gpt(rating_prompt, settings=settings_rating, return_pricing=True)
+    rating_kwargs = {
+        "query": rating_prompt,
+        "settings": settings_rating,
+        "return_pricing": True,
+        "openai_api_key": settings_rating.get("openai_api_key", ""),
+        "anthropic_api_key": settings_rating.get("anthropic_api_key", ""),
+        "google_api_key": settings_rating.get("gemini_api_key", "")
+    }
+
+    rating_response, rating_cost = call_gpt(**rating_kwargs)
     if not rating_response.strip().endswith(']'):
         rating_response += "]"
     rating_match = re.search(r'\[(\d+\.?\d*)\]', rating_response)
@@ -515,11 +540,21 @@ def run_single_iteration(args):
             "rating": rating,
             "rating_text": rating_text,
             "cost": total_cost,
-            "messages": updated_messages
+            "messages": updated_messages,
+            "error": None
         }
     except Exception as e:
         logger.error(f"Error in chat {chat_index} iteration {iteration_index + 1}: {e}")
-        return None
+        return {
+            "chat_index": chat_index,
+            "response": None,
+            "length": None,
+            "rating": None,
+            "rating_text": None,
+            "cost": None,
+            "messages": None,
+            "error": str(e)
+        }
 
 def run_analysis(
     openai_api_key, anthropic_api_key, gemini_api_key,
@@ -542,6 +577,7 @@ def run_analysis(
     progress_text = st.empty()
 
     results = []
+    errors = []  # To collect errors
 
     # Prepare arguments for all iterations
     all_args = []
@@ -569,7 +605,13 @@ def run_analysis(
         for future in as_completed(future_to_chat_index):
             chat_index = future_to_chat_index[future]
             result = future.result()
-            if result:
+            if result["error"]:
+                errors.append({
+                    "chat_index": chat_index,
+                    "iteration_index": result.get("iteration_index", "N/A"),
+                    "error_message": result["error"]
+                })
+            else:
                 results.append(result)
             completed += 1
             progress_bar.progress(completed / total_futures)
@@ -578,7 +620,19 @@ def run_analysis(
     progress_bar.empty()
     progress_text.empty()
 
+    if errors:
+        error_messages = ""
+        for error in errors:
+            error_messages += f"**Chat {error['chat_index']} Iteration {error['iteration_index']}**: {error['error_message']}\n\n"
+        st.error(f"Some iterations failed due to errors:\n\n{error_messages}")
+        return  # Exit the function to prevent further processing
+
     st.success("Analysis complete!", icon="✅")
+
+    # Proceed with analysis only if there are successful results
+    if not results:
+        st.error("No successful results to analyze.")
+        return
 
     # Organize results by chat for comparative analysis
     chat_results = {}
@@ -707,27 +761,31 @@ with col1:
         else:
             with st.spinner("Running analysis..."):
                 # Run the analysis
-                run_analysis(
-                    openai_api_key=st.session_state.get('openai_api_key', ""),
-                    anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
-                    gemini_api_key=st.session_state.get('gemini_api_key', ""),
-                    chat_data=chat_data,
-                    number_of_iterations=st.session_state.get('number_of_iterations', 3),
-                    model_response=st.session_state.get('model_response', "gpt-4o-mini"),
-                    temperature_response=st.session_state.get('temperature_response', 1.0),
-                    model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
-                    temperature_rating=st.session_state.get('temperature_rating', 0.0),
-                    analyze_rating=st.session_state.get('analyze_rating', True),
-                    analyze_length=st.session_state.get('analyze_length', False),
-                    show_transcripts=st.session_state.get('show_transcripts', True)
-                )
+                try:
+                    run_analysis(
+                        openai_api_key=st.session_state.get('openai_api_key', ""),
+                        anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
+                        gemini_api_key=st.session_state.get('gemini_api_key', ""),
+                        chat_data=chat_data,
+                        number_of_iterations=st.session_state.get('number_of_iterations', 3),
+                        model_response=st.session_state.get('model_response', "gpt-4o-mini"),
+                        temperature_response=st.session_state.get('temperature_response', 1.0),
+                        model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
+                        temperature_rating=st.session_state.get('temperature_rating', 0.0),
+                        analyze_rating=st.session_state.get('analyze_rating', True),
+                        analyze_length=st.session_state.get('analyze_length', False),
+                        show_transcripts=st.session_state.get('show_transcripts', True)
+                    )
+                except Exception as e:
+                    logger.error(f"Unexpected error: {e}")
+                    st.error(f"An unexpected error occurred: {e}")
 
 def add_chat():
     st.session_state.num_chats += 1
     st.session_state[f'prompt_count_chat_{st.session_state.num_chats}'] = 1
 
 with col2:
-    st.button("Add Chat", key='add_chat_button', on_click=add_chat)
+    st.button("Add Chat ➡️", key='add_chat_button', on_click=add_chat)
 
 # Now that chat_data is fully defined, we can generate the XLSX file
 xlsx_data = generate_settings_xlsx(
