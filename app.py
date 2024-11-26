@@ -47,6 +47,11 @@ st.title("Prompt Analyzer")
 # Initialize CookieManager with a unique key
 cookie_manager = stx.CookieManager(key='cookie_manager')
 
+# Fetch all cookies to ensure the CookieManager component is rendered
+cookies = cookie_manager.get_all()
+if not cookies:
+    st.stop()
+
 # Define default system messages
 default_control_system_message = "This is an important experiment. Please respond briefly."
 default_experiment_system_message = "This is an important experiment. Please respond briefly."
@@ -69,7 +74,7 @@ def get_api_key(cookie_name):
     else:
         return value
 
-# Load API keys from cookies into session state ###
+# Load API keys from cookies into session state
 for api_key in ['openai_api_key', 'anthropic_api_key', 'gemini_api_key']:
     if api_key not in st.session_state:
         st.session_state[api_key] = get_api_key(api_key)
