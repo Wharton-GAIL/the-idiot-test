@@ -72,7 +72,7 @@ def get_api_key(cookie_name):
     if value is None:
         return ""
     else:
-        return value
+        return value.strip()
 
 # Load API keys from cookies into session state
 for api_key in ['openai_api_key', 'anthropic_api_key', 'gemini_api_key']:
@@ -152,9 +152,9 @@ st.sidebar.header("API Keys")
 
 # Check if any API keys are valid (non-empty strings)
 are_api_keys_valid = any([
-    st.session_state.get('openai_api_key', ""),
-    st.session_state.get('anthropic_api_key', ""),
-    st.session_state.get('gemini_api_key', "")
+    st.session_state.get('openai_api_key', "").strip(),
+    st.session_state.get('anthropic_api_key', "").strip(),
+    st.session_state.get('gemini_api_key', "").strip()
 ])
 
 # Wrap the API Keys inputs in an expander
@@ -183,13 +183,13 @@ with st.sidebar.expander("API Keys", expanded=not are_api_keys_valid):
 
     # Add a button to save API keys
     if st.button("Save API Keys", key="save_api_keys_button"):
-        save_api_key("openai_api_key", openai_api_key_input)
-        save_api_key("anthropic_api_key", anthropic_api_key_input)
-        save_api_key("gemini_api_key", gemini_api_key_input)
+        save_api_key("openai_api_key", openai_api_key_input.strip())
+        save_api_key("anthropic_api_key", anthropic_api_key_input.strip())
+        save_api_key("gemini_api_key", gemini_api_key_input.strip())
         # Update session_state with the saved keys ***
-        st.session_state['openai_api_key'] = openai_api_key_input
-        st.session_state['anthropic_api_key'] = anthropic_api_key_input
-        st.session_state['gemini_api_key'] = gemini_api_key_input
+        st.session_state['openai_api_key'] = openai_api_key_input.strip()
+        st.session_state['anthropic_api_key'] = anthropic_api_key_input.strip()
+        st.session_state['gemini_api_key'] = gemini_api_key_input.strip()
         st.success("API keys saved successfully!", icon="✅")
 
 # --- Settings Section ---
