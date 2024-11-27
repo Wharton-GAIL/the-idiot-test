@@ -213,7 +213,7 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
         # Validate settings
         validate_settings(settings, settings_schema)
 
-        # Read the 'Prompts' sheet (previously 'Chat Data')
+        # Read the 'Prompts' sheet
         df_chat = pd.read_excel(xlsx_file, sheet_name='Prompts')
 
         # Set 'Type' as the index

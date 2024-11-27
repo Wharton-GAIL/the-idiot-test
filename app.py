@@ -293,16 +293,19 @@ if not st.session_state.settings_loaded:
                 else:
                     st.session_state[f'rating_prompt_template_chat_{chat_index}'] = ""
 
-                # Initialize prompt count
-                prompt_count = sum(1 for msg in chat.get('messages', []) if msg['role'] == 'user')
-                st.session_state[f'prompt_count_chat_{chat_index}'] = prompt_count if prompt_count > 0 else 1
+                # Initialize prompt counter
+                prompt_counter = 1
 
                 # Update messages
-                for idx_msg, msg in enumerate(chat.get('messages', []), start=1):
+                for msg in chat.get('messages', []):
                     if msg['role'] == 'user':
-                        st.session_state[f'user_msg_chat_{chat_index}_{idx_msg}'] = msg['content']
+                        st.session_state[f'user_msg_chat_{chat_index}_{prompt_counter}'] = msg['content']
+                        prompt_counter += 1
                     elif msg['role'] == 'assistant':
-                        st.session_state[f'assistant_msg_chat_{chat_index}_{idx_msg}'] = msg['content']
+                        st.session_state[f'assistant_msg_chat_{chat_index}_{prompt_counter - 1}'] = msg['content']
+
+                # Set the prompt count for this chat
+                st.session_state[f'prompt_count_chat_{chat_index}'] = max(prompt_counter - 1, 1)
 
             # Set the settings_loaded flag to True to hide the uploader
             st.session_state.settings_loaded = True
