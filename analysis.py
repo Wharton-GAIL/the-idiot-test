@@ -31,7 +31,8 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
     if analyze_length:
         lengths_data = []
         for chat_index in sorted(chat_results.keys()):
-            lengths = chat_results[chat_index]["lengths"]
+            # Filter out None values from lengths
+            lengths = [l for l in chat_results[chat_index]["lengths"] if l is not None]
             lengths_data.append(lengths)
 
         metrics = ["Average Length", "Median Length", "Std Dev Length", "Min Length", "Max Length"]
@@ -51,9 +52,19 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
 
     if analyze_rating:
         ratings_data = []
+        empty_rating_chats = []  # To track chats with no valid ratings
         for chat_index in sorted(chat_results.keys()):
-            ratings = chat_results[chat_index]["ratings"]
+            # Filter out None values from ratings
+            ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
+            if not ratings:
+                empty_rating_chats.append(f"Chat {chat_index}")
             ratings_data.append(ratings)
+
+        # Print error if any chat has no valid ratings
+        if empty_rating_chats:
+            error_message = f"Error: No valid ratings found for {', '.join(empty_rating_chats)}."
+            print(error_message)  # Prints to console
+            st.error(error_message)  # Displays error in Streamlit app
 
         metrics = ["Average Rating", "Median Rating", "Std Dev Rating", "Min Rating", "Max Rating"]
         stats_funcs = [statistics.mean, statistics.median, statistics.stdev, min, max]
@@ -103,9 +114,12 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
             # Length distribution histogram
             for chat_index in sorted(chat_results.keys()):
                 lengths = chat_results[chat_index]["lengths"]
-                hist, bins = np.histogram(lengths, bins=10, density=True)
-                bin_centers = (bins[:-1] + bins[1:]) / 2
-                axs[plot_idx].fill_between(bin_centers, hist, alpha=0.5, label=f"Chat {chat_index}")
+                # Filter out None values
+                lengths = [l for l in lengths if l is not None]
+                if lengths:
+                    hist, bins = np.histogram(lengths, bins=10, density=True)
+                    bin_centers = (bins[:-1] + bins[1:]) / 2
+                    axs[plot_idx].fill_between(bin_centers, hist, alpha=0.5, label=f"Chat {chat_index}")
             axs[plot_idx].set_title('Response Length Distribution')
             axs[plot_idx].set_xlabel('Response Length (characters)')
             axs[plot_idx].set_ylabel('Density')
@@ -113,7 +127,7 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
             plot_idx += 1
 
             # Length boxplot
-            lengths_data = [chat_results[chat_index]["lengths"] for chat_index in sorted(chat_results.keys())]
+            lengths_data = [ [l for l in chat_results[chat_index]["lengths"] if l is not None] for chat_index in sorted(chat_results.keys())]
             labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
             axs[plot_idx].boxplot(lengths_data, labels=labels)
             axs[plot_idx].set_title('Response Length Box Plot')
@@ -123,31 +137,33 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
         if analyze_rating:
             # Rating distribution histogram
             max_rating = max(
-                max(chat_results[chat_index]["ratings"]) for chat_index in chat_results if chat_results[chat_index]["ratings"]
-            )
+                max(chat_results[chat_index]["ratings"]) for chat_index in chat_results if chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"])
+            ) if any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) for chat_index in chat_results) else 5  # Default max rating
             bins = np.arange(0, int(max_rating) + 2)  # +2 to include the max value
 
             for idx, chat_index in enumerate(sorted(chat_results.keys())):
-                ratings = chat_results[chat_index]["ratings"]
-                hist, _ = np.histogram(ratings, bins=bins)
-                # Normalize to get proportions
-                hist = hist / len(ratings)
-                x = np.arange(len(bins)-1)
-                bar_width = 0.8 / len(chat_results)
-                axs[plot_idx].bar(x + (idx * bar_width), hist, bar_width,
-                                  label=f"Chat {chat_index}", alpha=0.7)
-            axs[plot_idx].set_title('Rating Distribution')
-            axs[plot_idx].set_xlabel('Rating')
-            axs[plot_idx].set_ylabel('Proportion')
-            axs[plot_idx].set_xticks(x)
-            axs[plot_idx].set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
-            axs[plot_idx].legend()
+                ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
+                if ratings:
+                    hist, _ = np.histogram(ratings, bins=bins)
+                    # Normalize to get proportions
+                    hist = hist / len(ratings)
+                    x = np.arange(len(bins)-1)
+                    bar_width = 0.8 / len(chat_results)
+                    axs[plot_idx].bar(x + (idx * bar_width), hist, bar_width,
+                                      label=f"Chat {chat_index}", alpha=0.7)
+            if analyze_rating and any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) for chat_index in chat_results):
+                axs[plot_idx].set_title('Rating Distribution')
+                axs[plot_idx].set_xlabel('Rating')
+                axs[plot_idx].set_ylabel('Proportion')
+                axs[plot_idx].set_xticks(x)
+                axs[plot_idx].set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
+                axs[plot_idx].legend()
             plot_idx += 1
 
             # Rating boxplot
-            ratings_data = [chat_results[chat_index]["ratings"] for chat_index in sorted(chat_results.keys())]
+            ratings_data_filtered = [ [r for r in chat_results[chat_index]["ratings"] if r is not None] for chat_index in sorted(chat_results.keys())]
             labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
-            axs[plot_idx].boxplot(ratings_data, labels=labels)
+            axs[plot_idx].boxplot(ratings_data_filtered, labels=labels)
             axs[plot_idx].set_title('Rating Box Plot')
             axs[plot_idx].set_ylabel('Rating')
             plot_idx += 1
