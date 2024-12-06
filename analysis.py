@@ -241,6 +241,7 @@ def create_html_report(
         table { border-collapse: collapse; width: 100%; margin: 20px 0; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f2f2f2; }
+        tbody { color: white; }
         .response-box {
             background-color: #f8f9fa;
             border: 1px solid #ddd;
@@ -277,7 +278,13 @@ def create_html_report(
             margin-bottom: 40px;
         }
         h1, h2, h3, h4, h5 {
-            color: #333;
+            color: white;
+        }
+        .dark-text {
+            color: black;
+        }
+        .white-text {
+            color: white;
         }
     """
 
@@ -295,7 +302,7 @@ def create_html_report(
         <h1>Research Results</h1>
 
         <div class="info-section">
-            <h2>Configuration</h2>
+            <h2 class="dark-text">Configuration</h2>
             <p><strong>Number of Iterations:</strong> {len(next(iter(chat_results.values()))['responses']) if chat_results else 'N/A'}</p>
             <p><strong>Response Generation Model:</strong> {model_response if model_response else 'N/A'}</p>
             <p><strong>Response Temperature:</strong> {temperature_response if temperature_response else 'N/A'}</p>
@@ -306,7 +313,7 @@ def create_html_report(
         </div>
 
         <h2>Cost Analysis</h2>
-        <p>Total API cost: ${total_cost:.4f}</p>
+        <p class="white-text">Total API cost: ${total_cost:.4f}</p>
 
         <h2>Detailed Analysis</h2>
         {tabulate(analysis_data, headers='firstrow', tablefmt='html')}
