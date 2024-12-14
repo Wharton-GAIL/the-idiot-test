@@ -506,7 +506,65 @@ for idx, col in enumerate(columns):
             # Only show delete button if there's more than one chat
             if st.session_state.num_chats > 1:
                 if st.button("Delete Chat ❌", key=f'delete_chat_{chat_index}'):
-                    delete_chat(chat_index)
+                    # Store the current number of chats
+                    num_chats = st.session_state.num_chats
+                    
+                    # Create a temporary dictionary to store the data we want to preserve
+                    temp_data = {}
+                    
+                    # Store data for ALL chats EXCEPT the one being deleted
+                    for i in range(1, num_chats + 1):
+                        if i != chat_index:  # Skip the chat being deleted
+                            chat_keys = {
+                                'system_msg': st.session_state.get(f'system_msg_chat_{i}', ''),
+                                'rating_prompt_template': st.session_state.get(f'rating_prompt_template_chat_{i}', ''),
+                                'prompt_count': st.session_state.get(f'prompt_count_chat_{i}', 1)
+                            }
+                            
+                            # Store message pairs
+                            messages = {}
+                            for j in range(1, st.session_state.get(f'prompt_count_chat_{i}', 1) + 1):
+                                messages[f'user_{j}'] = st.session_state.get(f'user_msg_chat_{i}_{j}', '')
+                                messages[f'assistant_{j}'] = st.session_state.get(f'assistant_msg_chat_{i}_{j}', '')
+                            
+                            chat_keys['messages'] = messages
+                            temp_data[i] = chat_keys
+                    
+                    # Clear all chat-related session state
+                    keys_to_clear = [key for key in st.session_state.keys() 
+                                    if any(pattern in key for pattern in 
+                                          ['system_msg_chat_',
+                                           'rating_prompt_template_chat_',
+                                           'user_msg_chat_',
+                                           'assistant_msg_chat_',
+                                           'prompt_count_chat_',
+                                           'add_prompt_chat_',
+                                           'delete_chat_'])]
+                    
+                    for key in keys_to_clear:
+                        del st.session_state[key]
+                    
+                    # Decrease the number of chats
+                    st.session_state.num_chats -= 1
+                    
+                    # Restore the preserved data in new positions
+                    new_index = 1
+                    for i in sorted(temp_data.keys()):
+                        data = temp_data[i]
+                        
+                        # Restore basic chat data
+                        st.session_state[f'system_msg_chat_{new_index}'] = data['system_msg']
+                        st.session_state[f'rating_prompt_template_chat_{new_index}'] = data['rating_prompt_template']
+                        st.session_state[f'prompt_count_chat_{new_index}'] = data['prompt_count']
+                        
+                        # Restore messages
+                        for msg_key, msg_value in data['messages'].items():
+                            msg_type, msg_num = msg_key.split('_')
+                            st.session_state[f'{msg_type}_msg_chat_{new_index}_{msg_num}'] = msg_value
+                        
+                        new_index += 1
+                    
+                    # Rerun to refresh the UI
                     st.rerun()
 
         # Loop to display prompt and response inputs
