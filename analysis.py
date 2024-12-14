@@ -372,7 +372,7 @@ def generate_experiment_xlsx(
     for r_idx, row in enumerate(dataframe_to_rows(df_analysis, index=False, header=True), 1):
         for c_idx, value in enumerate(row, 1):
             cell = sheet_analysis.cell(row=r_idx, column=c_idx, value=value)
-            
+                
             # Skip header row and first column (metric names)
             if r_idx > 1 and c_idx > 1:
                 if isinstance(value, str):
@@ -403,19 +403,11 @@ def generate_experiment_xlsx(
     # Create a consolidated Transcripts sheet
     sheet_transcripts = workbook.create_sheet('Transcripts')
 
-    # Add headers
-    sheet_transcripts.append(['Chat #', 'Iteration', 'Text'])
-
-    # Make the header bold
-    header_font = Font(bold=True)
-    for cell in sheet_transcripts[1]:  # First row contains the headers
-        cell.font = header_font
-
-    # Adjust column widths for headers
-    for col_idx, header in enumerate(['Chat #', 'Iteration', 'Text'], 1):
-        sheet_transcripts.column_dimensions[get_column_letter(col_idx)].width = len(header) + 2
-
     # Prepare data for transcripts
+    columns_data = []
+    max_messages = 0  # To track the maximum number of messages
+
+    # Collect data per chat and iteration
     for chat_index in sorted(chat_results.keys()):
         chat_result = chat_results[chat_index]
         messages_per_iteration = chat_result['messages_per_iteration']
@@ -423,26 +415,57 @@ def generate_experiment_xlsx(
         rating_texts = chat_result.get('rating_texts', [])
 
         for iteration_index, messages in enumerate(messages_per_iteration, 1):
-            # Append messages
+            column = {
+                'chat': f"Chat {chat_index}",
+                'iteration': f"Iteration {iteration_index}",
+                'messages': [],
+                'rating_pos': None
+            }
+
+            # Collect messages
             for msg in messages:
                 content = f"{msg['content']}"
-                sheet_transcripts.append([f"Chat {chat_index}", iteration_index, content])
+                column['messages'].append(content)
 
-            # Append rating after each iteration
+            # Append rating at the end
             if ratings and iteration_index <= len(ratings):
                 rating = ratings[iteration_index - 1]
                 rating_text = rating_texts[iteration_index - 1] if rating_texts else ''
-                rating_content = f"{rating} [verbatim rating: '{rating_text}']"
-                sheet_transcripts.append([f"Chat {chat_index}", iteration_index, rating_content])
+                rating_content = f"Rating: {rating} [verbatim rating: '{rating_text}']"
+                column['rating_pos'] = len(column['messages']) + 2  # +2 to account for header rows
+                column['messages'].append(rating_content)
 
-            # Add an empty row for better readability between iterations
-            sheet_transcripts.append(['', '', ''])
+            # Update max_messages
+            if len(column['messages']) > max_messages:
+                max_messages = len(column['messages'])
 
-    # Adjust column widths based on content
-    for column_cells in sheet_transcripts.columns:
-        length = max(len(str(cell.value) if cell.value is not None else "") for cell in column_cells)
-        column_letter = column_cells[0].column_letter
-        sheet_transcripts.column_dimensions[column_letter].width = min(length + 2, 50)  # Set a max width to prevent overly wide columns
+            columns_data.append(column)
+
+    # Write headers
+    sheet_transcripts.cell(row=1, column=1, value='Chat #')
+    sheet_transcripts.cell(row=2, column=1, value='Iteration #')
+
+    for col_idx, column in enumerate(columns_data, start=2):
+        sheet_transcripts.cell(row=1, column=col_idx, value=column['chat'])
+        sheet_transcripts.cell(row=2, column=col_idx, value=column['iteration'])
+
+    # Fill messages and apply formatting
+    for col_idx, column in enumerate(columns_data, start=2):
+        for msg_idx, message in enumerate(column['messages'], start=3):
+            cell = sheet_transcripts.cell(row=msg_idx, column=col_idx, value=message)
+            cell.alignment = Alignment(wrap_text=True)
+
+            # Boldface the rating cell
+            if column['rating_pos'] and msg_idx == column['rating_pos']:
+                cell.font = Font(bold=True)
+
+    # Set column widths and wrap text
+    sheet_transcripts.column_dimensions['A'].width = 15  # Width for the first column
+    for col in sheet_transcripts.iter_cols(min_col=2, max_col=sheet_transcripts.max_column):
+        col_letter = col[0].column_letter
+        sheet_transcripts.column_dimensions[col_letter].width = 75
+        for cell in col:
+            cell.alignment = Alignment(wrap_text=True)
 
     # Add Plot Image Sheet
     if plot_base64:
