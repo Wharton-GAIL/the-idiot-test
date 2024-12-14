@@ -17,7 +17,12 @@ def validate_value(value, expected_type):
     try:
         if expected_type == 'bool':
             if isinstance(value, str):
-                return value.strip().lower() in ('true', '1')
+                if value.strip().lower() in ('true', '1'):
+                    return True
+                elif value.strip().lower() in ('false', '0'):
+                    return False
+                else:
+                    raise ValueError(f"Cannot convert string '{value}' to boolean.")
             return bool(value)
         elif expected_type == 'int':
             return int(value)
@@ -35,29 +40,45 @@ def validate_value(value, expected_type):
         raise ValueError(f"Invalid value '{value}': {e}")
 
 def validate_settings(settings, schema):
-    for key, value in settings.items():
-        if key in schema:
-            expected_type = schema[key]['type']
-            if expected_type == 'bool' and not isinstance(value, bool):
-                raise TypeError(f"Expected boolean for '{key}', got {type(value).__name__}")
-            elif expected_type == 'int' and not isinstance(value, int):
-                raise TypeError(f"Expected integer for '{key}', got {type(value).__name__}")
-            elif expected_type == 'float' and not isinstance(value, float):
-                raise TypeError(f"Expected float for '{key}', got {type(value).__name__}")
-            elif expected_type == 'str' and not isinstance(value, str):
-                raise TypeError(f"Expected string for '{key}', got {type(value).__name__}")
+    # Set '10x iterations' to False if it's not present
+    if '10x_iterations' not in settings:
+        settings['10x_iterations'] = False
+
+    for key, key_schema in schema.items():
+        title = schema[key]['title'] if key in schema else key
+        if key not in settings:
+            raise ValueError(f"Missing required setting '{title}'.")
+        value = settings[key]
+        expected_type = key_schema['type']
+        actual_type = type(value).__name__
+        if expected_type == 'bool' and not isinstance(value, bool):
+            raise TypeError(f"Expected boolean for '{title}', got {actual_type}.")
+        elif expected_type == 'int' and not isinstance(value, int):
+            raise TypeError(f"Expected integer for '{title}', got {actual_type}.")
+        elif expected_type == 'float' and not isinstance(value, float):
+            raise TypeError(f"Expected float for '{title}', got {actual_type}.")
+        elif expected_type == 'str' and not isinstance(value, str):
+            raise TypeError(f"Expected string for '{title}', got {actual_type}.")
+        elif expected_type == 'list' and not isinstance(value, list):
+            raise TypeError(f"Expected list for '{title}', got {actual_type}.")
     return True
 
-def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
-    # Load the schema
-    schema = load_schema(schema_path)['settings']
+
+def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json', validate_chat=True):
+    # Validate settings_dict and chat_data before exporting
+    schema = load_schema(schema_path)
+    settings_schema = schema['settings']
+    chat_schema = schema['chat_data']
+    validate_settings(settings_dict, settings_schema)
+    if validate_chat:
+        validate_chat_data(chat_data, schema)
 
     # Create a dictionary of settings based on the schema
-    settings_values = {key: [settings_dict[key]] for key in schema.keys()}
+    settings_values = {key: [settings_dict[key]] for key in settings_schema.keys()}
 
     # Create a DataFrame using the schema titles
     settings = {
-        schema[key]['title']: value for key, value in settings_values.items()
+        settings_schema[key]['title']: value for key, value in settings_values.items()
     }
     df_settings = pd.DataFrame(settings).transpose().reset_index()
     df_settings.columns = ['Title', 'Value']
@@ -101,73 +122,85 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json'):
 
             # Add system message
             chat_records.append({
-                "Chat": f"Chat {idx}",
-                "Type": "System Message",
-                "Content": system_message
+                "chat": f"Chat {idx}",
+                "type": "System Message",
+                "content": system_message,
+                "row": None
             })
 
+            # Add evaluation rubric
             chat_records.append({
-                "Chat": f"Chat {idx}",
-                "Type": "Evaluation Rubric",
-                "Content": rating_prompt
+                "chat": f"Chat {idx}",
+                "type": "Evaluation Rubric",
+                "content": rating_prompt,
+                "row": None
             })
 
-            # Add user prompts and assistant responses
+            # Add chat (user prompts and assistant responses)
             messages = chat.get("messages", [])
             prompt_counter = 0
             for message in messages:
                 role = message.get("role", "")
                 content = message.get("content", "").strip()
+                
                 if role == "user":
                     prompt_counter += 1
-                    # Add prompt
-                    chat_records.append({
-                        "Chat": f"Chat {idx}",
-                        "Type": f"Prompt {prompt_counter}",
-                        "Content": content
-                    })
+                    number = prompt_counter
+                    message_type = f"Prompt {number}"
                 elif role == "assistant":
-                    # Replace blank responses with "[AI Responds]" to disambiguate
-                    response_content = content if content else "[AI Responds]"
-                    chat_records.append({
-                        "Chat": f"Chat {idx}",
-                        "Type": f"Response {prompt_counter}",
-                        "Content": response_content
-                    })
+                    number = prompt_counter
+                    message_type = f"Response {number}"
+                else:
+                    raise ValueError(f"Unexpected role: {role}")
+
+                chat_records.append({
+                    "chat": f"Chat {idx}",
+                    "type": message_type,
+                    "content": content if content else "[AI Responds]",
+                    "row": None,
+                    "role": role,
+                    "number": number
+                })
 
         df_chat = pd.DataFrame(chat_records)
 
-        # Define the desired order for 'Type'
+        # Define the desired order for 'type'
         initial_type_order = ["System Message", "Evaluation Rubric"]
-        prompt_types = df_chat['Type'].str.extract(r'Prompt (\d+)').dropna()[0].astype(int).unique()
-        prompt_types.sort()
-        for num in prompt_types:
+        prompt_numbers = df_chat['type'].str.extract(r'Prompt (\d+)').dropna()[0].astype(int).unique()
+        prompt_numbers.sort()
+        for num in prompt_numbers:
             initial_type_order.append(f"Prompt {num}")
             initial_type_order.append(f"Response {num}")
 
         # Ensure the DataFrame respects this exact order
-        df_chat['Type'] = pd.Categorical(df_chat['Type'], categories=initial_type_order, ordered=True)
+        df_chat['type'] = pd.Categorical(df_chat['type'], categories=initial_type_order, ordered=True)
 
-        # Sort the DataFrame by Chat and then by the Type order
-        df_chat = df_chat.sort_values(['Chat', 'Type'])
+        # Sort the DataFrame by 'chat' and then by the 'type' order
+        df_chat = df_chat.sort_values(['chat', 'type'])
 
-        # Pivot the DataFrame to have 'Type' as rows and each chat as a separate column
-        pivot_df = df_chat.pivot(index='Type', columns='Chat', values='Content')
+        # Check for duplicates before pivoting
+        duplicates = df_chat[df_chat.duplicated(subset=['type', 'chat'], keep=False)]
+        if not duplicates.empty:
+            duplicate_details = duplicates.to_string()
+            raise ValueError(f"Found duplicate type/chat combinations, which is not allowed:\n{duplicate_details}")
 
-        # Reset index to have 'Type' as a column
+        # Pivot the DataFrame to have 'type' as rows and each chat as a separate column
+        pivot_df = df_chat.pivot(index='type', columns='chat', values='content')
+
+        # Reset index to have 'type' as a column
         pivot_df.reset_index(inplace=True)
         pivot_df.to_excel(writer, sheet_name='Prompts', index=False, header=True)
         worksheet_chat = writer.sheets['Prompts']
 
         # Adjust column widths and formats
         # First column: Auto-resize based on the longest text
-        max_length_type = df_chat['Type'].astype(str).map(len).max()
+        max_length_type = df_chat['type'].astype(str).map(len).max()
         optimal_width_type = max_length_type + 2
         worksheet_chat.set_column('A:A', optimal_width_type, wrap_format)
 
         # Subsequent columns: Set width to 75 and enable word wrap
-        for idx, chat in enumerate(sorted(df_chat['Chat'].unique()), start=2):
-        # Subsequent columns: Set width to 75 and enable word wrap
+        for idx, chat in enumerate(sorted(df_chat['chat'].unique()), start=2):
+            # Subsequent columns: Set width to 75 and enable word wrap
             col_letter = xl_col_to_name(idx - 1)
             worksheet_chat.set_column(f'{col_letter}:{col_letter}', 75, wrap_format)
 
@@ -194,7 +227,7 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
         )
 
         settings = {}
-        for _, row in df_settings.iterrows():
+        for idx, row in df_settings.iterrows():
             title = row['Title']
             value = row['Value']
             if title in title_to_key:
@@ -205,29 +238,36 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
                     converted_value = validate_value(value, expected_type)
                     settings[key] = converted_value
                 except ValueError as e:
-                    raise ValueError(f"Invalid value for '{title}': {e}")
+                    raise ValueError(f"Row {idx + 2} - Invalid value for '{title}': {e}")
             else:
-                # Ignore unrecognized settings
-                continue
+                raise ValueError(f"Row {idx + 2} - Unrecognized setting '{title}'.")
 
         # Validate settings
         validate_settings(settings, settings_schema)
 
         # Read the 'Prompts' sheet
         df_chat = pd.read_excel(xlsx_file, sheet_name='Prompts')
+        
+        # Normalize column names to handle case-insensitive 'type'
+        df_chat.columns = [col.lower() if col.lower() == 'type' else col for col in df_chat.columns]
+        if 'type' not in df_chat.columns:
+            raise ValueError("Could not find 'type' or 'Type' column in Prompts sheet")
 
-        # Set 'Type' as the index
-        df_chat.set_index('Type', inplace=True)
+        # Reset index to get row numbers (DataFrame index corresponds to Excel rows minus header)
+        df_chat.reset_index(inplace=True)
+        df_chat['row_number'] = df_chat.index + 2  # Adjusting for 0-based & header row
+
+        # Set 'type' as the index
+        df_chat.set_index('type', inplace=True)
 
         # Extract chat columns (e.g., 'Chat 1', 'Chat 2', ...)
         chat_columns = [col for col in df_chat.columns if col.startswith('Chat')]
 
         chat_data = []
-        for chat_col in chat_columns:
+        for chat_idx, chat_col in enumerate(chat_columns, start=1):
             chat = {}
-            messages = []
-
             chat_content = df_chat[chat_col].fillna('')
+            row_numbers = df_chat['row_number']
 
             # Extract system message
             system_message = chat_content.get('System Message', '').strip()
@@ -238,30 +278,45 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
             chat['rating_prompt_template'] = rating_prompt_template
 
             # Find all prompt and response types
-            prompt_types = [t for t in df_chat.index if t.startswith('Prompt ')]
-            response_types = [t for t in df_chat.index if t.startswith('Response ')]
+            message_types = [t for t in df_chat.index if t.startswith('Prompt') or t.startswith('Response')]
 
-            # Extract prompt numbers
-            prompt_numbers = sorted(set(int(t.split(' ')[1]) for t in prompt_types))
+            # Collect all messages
+            message_entries = []
+            for message_type in message_types:
+                if message_type.startswith('Prompt'):
+                    role = 'user'
+                elif message_type.startswith('Response'):
+                    role = 'assistant'
+                else:
+                    raise ValueError(f"Unexpected message type: {message_type} in chat {chat_idx}")
 
-            for num in prompt_numbers:
-                prompt_key = f'Prompt {num}'
-                response_key = f'Response {num}'
+                content = chat_content.get(message_type, '').strip()
+                number = int(message_type.split(' ')[1])
+                row = row_numbers.get(message_type)
 
-                prompt_content = chat_content.get(prompt_key, '').strip()
-                response_content = chat_content.get(response_key, '').strip()
+                if role == 'assistant' and content == '[AI Responds]':
+                    content = ''
 
-                # Handle '[AI Responds]' as a blank entry
-                if response_content == '[AI Responds]':
-                    response_content = ''
+                message_entries.append({
+                    "role": role,
+                    "content": content,
+                    "number": number,
+                    "row": row,
+                    "type": message_type,
+                    "chat": chat_col
+                })
 
-                # Add prompt to messages if not blank
-                if prompt_content:
-                    messages.append({"role": "user", "content": prompt_content})
+            # Trim trailing blank messages
+            last_non_blank_index = None
+            for idx, message in reversed(list(enumerate(message_entries))):
+                if message['content']:
+                    last_non_blank_index = idx
+                    break
 
-                # Add response to messages if not blank
-                if response_content:
-                    messages.append({"role": "assistant", "content": response_content})
+            if last_non_blank_index is not None:
+                messages = message_entries[:last_non_blank_index+1]
+            else:
+                messages = []
 
             chat['messages'] = messages
             chat_data.append(chat)
@@ -271,31 +326,80 @@ def import_settings_xlsx(xlsx_file, schema_path='schema.json'):
 
         settings['chat_data'] = chat_data
         return settings
-    except FileNotFoundError:
-        raise FileNotFoundError("The provided XLSX file does not contain the required sheets.")
+
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"The provided XLSX file does not contain the required sheets: {e}")
     except pd.errors.EmptyDataError:
         raise ValueError("The XLSX file is empty or corrupted.")
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Validation error: {e}")
     except Exception as e:
         raise RuntimeError(f"An unexpected error occurred during import: {e}")
 
 def validate_chat_data(chat_data, schema):
-    for chat in chat_data:
+    for chat_idx, chat in enumerate(chat_data, start=1):
         # Validate system_message
         if not isinstance(chat.get("system_message", ""), str):
-            raise TypeError("system_message must be a string.")
-        
+            raise TypeError(f"Chat {chat_idx}: 'system_message' must be a string.")
+
         # Validate rating_prompt_template
         if chat.get("rating_prompt_template") is not None and not isinstance(chat["rating_prompt_template"], str):
-            raise TypeError("rating_prompt_template must be a string or None.")
-        
+            raise TypeError(f"Chat {chat_idx}: 'rating_prompt_template' must be a string or None.")
+
         # Validate messages
         messages = chat.get("messages", [])
         if not isinstance(messages, list):
-            raise TypeError("messages must be a list.")
-        
-        for message in messages:
-            if not isinstance(message.get("role"), str):
-                raise TypeError("Each message's role must be a string.")
+            raise TypeError(f"Chat {chat_idx}: 'messages' must be a list.")
+
+        # Expected sequence: Prompt 1, Response 1, Prompt 2, Response 2, etc.
+        expected_number = 1
+        i = 0
+        while i < len(messages):
+            # Expect a user prompt
+            message = messages[i]
+            if message.get("role") != "user":
+                raise ValueError(
+                    f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': Expected a 'prompt' (user), got '{message.get('role')}'."
+                )
             if not isinstance(message.get("content"), str):
-                raise TypeError("Each message's content must be a string.")
+                raise TypeError(
+                    f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': 'content' must be a string."
+                )
+
+            if message.get("number") != expected_number:
+                raise ValueError(
+                    f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': Expected prompt number {expected_number}, got {message.get('number')}."
+                )
+
+            i += 1  # Move to the next message
+
+            # Check if there is an assistant response
+            if i < len(messages):
+                message = messages[i]
+                if message.get("role") != "assistant":
+                    raise ValueError(
+                        f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': Expected a 'response' (assistant), got '{message.get('role')}'."
+                    )
+                if not isinstance(message.get("content"), str):
+                    raise TypeError(
+                        f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': 'content' must be a string."
+                    )
+
+                if message.get("number") != expected_number:
+                    raise ValueError(
+                        f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': Expected response number {expected_number}, got {message.get('number')}."
+                    )
+
+                i += 1  # Move to the next message
+
+            expected_number += 1
+
+        # Ensure that the last message is not an assistant response
+        if len(messages) >= 1 and messages[-1].get("role") == "assistant":
+            message = messages[-1]
+            print(f"Full chat: \n{chat}")
+            raise ValueError(
+                f"Row {message.get('row')}, Type '{message.get('type')}', Chat '{message.get('chat')}': Conversation cannot end with a response (assistant)."
+            )
+
     return True
