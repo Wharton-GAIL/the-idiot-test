@@ -2,3 +2,5 @@ venv/
 *.pyc
 *.log
 Experiments/
+flat-idiot.bat
+flat_idiot-test.txt

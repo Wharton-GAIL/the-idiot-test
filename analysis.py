@@ -50,6 +50,12 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
                 row.append(value)
             analysis_data.append(row)
 
+    row = ["Iterations per chat"]
+    for chat_index in sorted(chat_results.keys()):
+        iterations = len(chat_results[chat_index]["responses"])
+        row.append(str(iterations))
+    analysis_data.append(row)
+
     if analyze_rating:
         ratings_data = []
         empty_rating_chats = []  # To track chats with no valid ratings
@@ -66,8 +72,15 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
             print(error_message)  # Prints to console
             st.error(error_message)  # Displays error in Streamlit app
 
-        metrics = ["Average Rating", "Median Rating", "Std Dev Rating", "Min Rating", "Max Rating"]
-        stats_funcs = [statistics.mean, statistics.median, statistics.stdev, min, max]
+        metrics = ["Average Rating", "95% CI of Rating", "SEM of Rating", "Std Dev of Rating", "Minimum Rating", "Maximum Rating"]
+        stats_funcs = [
+            statistics.mean,
+            lambda x: f"±{1.96 * statistics.stdev(x) / np.sqrt(len(x)):.2f}",  # 95% CI
+            lambda x: statistics.stdev(x) / np.sqrt(len(x)),  # SEM
+            statistics.stdev,
+            min,
+            max
+        ]
         for metric, func in zip(metrics, stats_funcs):
             row = [metric]
             for ratings in ratings_data:
@@ -75,7 +88,15 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
                     if func == statistics.stdev and len(ratings) < 2:
                         value = "N/A"
                     else:
-                        value = f"{func(ratings):.2f}"
+                        try:
+                            result = func(ratings)
+                            # Check if result is already a string (like for CI function)
+                            if isinstance(result, str):
+                                value = result
+                            else:
+                                value = f"{result:.2f}"
+                        except Exception:
+                            value = "N/A"
                 else:
                     value = "N/A"
                 row.append(value)
