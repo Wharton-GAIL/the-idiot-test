@@ -114,6 +114,7 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
 def generate_plots(chat_results, analyze_length, analyze_rating):
     plot_base64_list = []
     plt.style.use('default')
+    plt.rcParams.update({'font.size': 16}) #bigger text for older eyes
 
     if analyze_length:
         plot_base64_list.extend(generate_length_plots(chat_results))
@@ -150,6 +151,38 @@ def generate_length_plots(chat_results):
     ax.set_xlabel('Response Length (characters)')
     ax.set_ylabel('Density')
     ax.legend()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    length_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    # Mean length with 95% CI
+    means = []
+    cis = []
+    for lengths in lengths_data:
+        if len(lengths) > 1:
+            m = statistics.mean(lengths)
+            se = statistics.stdev(lengths) / np.sqrt(len(lengths))
+            ci = 1.96 * se
+            means.append(m)
+            cis.append(ci)
+        else:
+            # If only one length, no CI can be computed
+            means.append(lengths[0])
+            cis.append(0)
+
+    fig_length_ci = plt.figure(figsize=(5,6))
+    ax = fig_length_ci.add_subplot(111)
+
+    x_positions = np.arange(len(labels))
+    ax.bar(x_positions, means, yerr=cis, align='center', alpha=0.7, ecolor='black', capsize=5)
+    ax.set_title('Mean Response Length with 95% CI')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Response Length (characters)')
+    ax.yaxis.grid(True)
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
@@ -220,12 +253,44 @@ def generate_rating_plots(chat_results):
     rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
     plt.close()
 
-    # Rating boxplot
+    # Rating boxplot (to show distribution)
     fig_rating_box = plt.figure(figsize=(5, 6))
     ax = fig_rating_box.add_subplot(111)
     ax.boxplot(ratings_data, labels=labels)
     ax.set_title('Rating Box Plot')
     ax.set_ylabel('Rating')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    # Mean rating with 95% CI
+    means = []
+    cis = []
+    for ratings in ratings_data:
+        if len(ratings) > 1:
+            m = statistics.mean(ratings)
+            se = statistics.stdev(ratings) / np.sqrt(len(ratings))
+            ci = 1.96 * se
+            means.append(m)
+            cis.append(ci)
+        else:
+            # If only one rating, no CI can be computed. We'll show no error.
+            means.append(ratings[0])
+            cis.append(0)
+
+    fig_rating_ci = plt.figure(figsize=(5,6))
+    ax = fig_rating_ci.add_subplot(111)
+
+    x_positions = np.arange(len(labels))
+    ax.bar(x_positions, means, yerr=cis, align='center', alpha=0.7, ecolor='black', capsize=5)
+    ax.set_title('Mean Rating with 95% CI')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Rating')
+    ax.yaxis.grid(True)
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
@@ -529,7 +594,7 @@ def generate_experiment_xlsx(
         
         # Define layout parameters
         row_height = 2  # Height in Excel rows
-        images_per_row = 2
+        images_per_row = 3
         
         for i, plot_base64 in enumerate(plot_base64_list):
             img_data = base64.b64decode(plot_base64)
@@ -543,7 +608,7 @@ def generate_experiment_xlsx(
             
             # Calculate position
             row = (i // images_per_row) * row_height + 1
-            col = (i % images_per_row) * 6 + 1  # 15 columns spacing between images
+            col = (i % images_per_row) * 6 + 1  # 4 columns spacing between images
             
             # Add image to worksheet
             img_sheet.add_image(img, f'{get_column_letter(col)}{row}')
