@@ -896,24 +896,35 @@ def run_analysis(
         plot_base64_list=plot_base64_list
     )
 
-    # Download button for the HTML report
-    st.download_button(
-        label="Download Report as HTML",
-        data=html_report,
-        file_name="analysis_report.html",
-        mime="text/html"
-    )
+    # Store results in session state
+    st.session_state['analysis_results'] = {
+        'html_report': html_report,
+        'xlsx_with_results': xlsx_with_results
+    }
 
-    # Download button for the Experiment as XLSX
-    st.download_button(
-        label="Download Experiment as XLSX",
-        data=xlsx_with_results,
-        file_name="experiment_results.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # Display download buttons and HTML report
+    display_analysis_results()
 
-    # Display the HTML report in Streamlit
-    st.components.v1.html(html_report, height=1000, scrolling=True)
+def display_analysis_results():
+    if 'analysis_results' in st.session_state:
+        # Download button for the HTML report
+        st.download_button(
+            label="Download Report as HTML",
+            data=st.session_state['analysis_results']['html_report'],
+            file_name="analysis_report.html",
+            mime="text/html"
+        )
+
+        # Download button for the Experiment as XLSX
+        st.download_button(
+            label="Download Experiment as XLSX",
+            data=st.session_state['analysis_results']['xlsx_with_results'],
+            file_name="experiment_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Display the HTML report in Streamlit
+        st.components.v1.html(st.session_state['analysis_results']['html_report'], height=1000, scrolling=True)
 
 # Create three columns for "Run Analysis", "Reset", and "Add Chat" buttons
 col1, col2, col3 = st.columns([3, .5, .5])  # Adjust the width ratios as needed
@@ -1011,6 +1022,10 @@ if 'chat_data' in locals():
     st.sidebar.download_button(
         label="Save",
         data=xlsx_data,
-        file_name="experiment_results.xlsx",
+        file_name="experiment_settings.xlsx",  # Changed name to differentiate from results
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Display analysis results if they exist
+if 'analysis_results' in st.session_state:
+    display_analysis_results()
