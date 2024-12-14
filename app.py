@@ -847,8 +847,8 @@ def run_analysis(
         chat_results[chat_index]["total_cost"] += res["cost"]
         chat_results[chat_index]["messages_per_iteration"].append(res["messages"])
 
-    # Generate analysis data for all chats
-    analysis_data, plot_base64, total_cost = generate_analysis(
+    # Generate analysis data and plots
+    analysis_data, plot_base64_list, total_cost = generate_analysis(
         chat_results,
         analyze_rating,
         analyze_length
@@ -864,7 +864,7 @@ def run_analysis(
     # Generate the HTML report with comparative analysis
     html_report = create_html_report(
         analysis_data,
-        plot_base64,
+        plot_base64_list,
         total_cost,
         chat_data=chat_data,
         chat_results=chat_results,
@@ -893,7 +893,7 @@ def run_analysis(
         chat_data=chat_data,
         analysis_data=analysis_data,
         chat_results=chat_results,
-        plot_base64=plot_base64
+        plot_base64_list=plot_base64_list
     )
 
     # Download button for the HTML report

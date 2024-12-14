@@ -10,16 +10,13 @@ import pandas as pd
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenPyXLImage
 from PIL import Image as PILImage
-import io
-import pandas as pd
-import base64
-from import_export import generate_settings_xlsx
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenPyXLImage
 from PIL import Image as PILImage
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment
+from import_export import generate_settings_xlsx
 
 def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
     total_cost = sum(chat_res["total_cost"] for chat_res in chat_results.values())
@@ -110,7 +107,7 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
     analysis_data.append(row)
 
     # Generate plots
-    plot_base64 = ""
+    plot_base64_list = []
     plt.style.use('default')
 
     plot_cols = 0
@@ -121,87 +118,105 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
 
     if plot_cols == 0:
         # No plots to generate
-        plot_base64 = ""
+        plot_base64_list = []
     else:
-        fig, axs = plt.subplots(1, plot_cols, figsize=(5 * plot_cols, 6))
-        if plot_cols == 1:
-            axs = [axs]
-        else:
-            axs = axs.flatten()
-
-        plot_idx = 0
-
+        # Create separate figures for each plot
         if analyze_length:
             # Length distribution histogram
+            fig_length_dist = plt.figure(figsize=(5, 6))
+            ax = fig_length_dist.add_subplot(111)
             for chat_index in sorted(chat_results.keys()):
-                lengths = chat_results[chat_index]["lengths"]
-                # Filter out None values
-                lengths = [l for l in lengths if l is not None]
+                lengths = [l for l in chat_results[chat_index]["lengths"] if l is not None]
                 if lengths:
                     hist, bins = np.histogram(lengths, bins=10, density=True)
                     bin_centers = (bins[:-1] + bins[1:]) / 2
-                    axs[plot_idx].fill_between(bin_centers, hist, alpha=0.5, label=f"Chat {chat_index}")
-            axs[plot_idx].set_title('Response Length Distribution')
-            axs[plot_idx].set_xlabel('Response Length (characters)')
-            axs[plot_idx].set_ylabel('Density')
-            axs[plot_idx].legend()
-            plot_idx += 1
+                    ax.fill_between(bin_centers, hist, alpha=0.5, label=f"Chat {chat_index}")
+            ax.set_title('Response Length Distribution')
+            ax.set_xlabel('Response Length (characters)')
+            ax.set_ylabel('Density')
+            ax.legend()
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            plt.close()
 
             # Length boxplot
-            lengths_data = [ [l for l in chat_results[chat_index]["lengths"] if l is not None] for chat_index in sorted(chat_results.keys())]
+            fig_length_box = plt.figure(figsize=(5, 6))
+            ax = fig_length_box.add_subplot(111)
+            lengths_data = [[l for l in chat_results[chat_index]["lengths"] if l is not None] 
+                          for chat_index in sorted(chat_results.keys())]
             labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
-            axs[plot_idx].boxplot(lengths_data, labels=labels)
-            axs[plot_idx].set_title('Response Length Box Plot')
-            axs[plot_idx].set_ylabel('Response Length (characters)')
-            plot_idx += 1
+            ax.boxplot(lengths_data, labels=labels)
+            ax.set_title('Response Length Box Plot')
+            ax.set_ylabel('Response Length (characters)')
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            plt.close()
 
         if analyze_rating:
             # Rating distribution histogram
+            fig_rating_dist = plt.figure(figsize=(5, 6))
+            ax = fig_rating_dist.add_subplot(111)
+            
             max_rating = max(
-                max(chat_results[chat_index]["ratings"]) for chat_index in chat_results if chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"])
-            ) if any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) for chat_index in chat_results) else 5  # Default max rating
-            bins = np.arange(0, int(max_rating) + 2)  # +2 to include the max value
-
+                max(chat_results[chat_index]["ratings"]) 
+                for chat_index in chat_results 
+                if chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"])
+            ) if any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) 
+                    for chat_index in chat_results) else 5
+            
+            bins = np.arange(0, int(max_rating) + 2)
+            
             for idx, chat_index in enumerate(sorted(chat_results.keys())):
                 ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
                 if ratings:
                     hist, _ = np.histogram(ratings, bins=bins)
-                    # Normalize to get proportions
                     hist = hist / len(ratings)
                     x = np.arange(len(bins)-1)
                     bar_width = 0.8 / len(chat_results)
-                    axs[plot_idx].bar(x + (idx * bar_width), hist, bar_width,
-                                      label=f"Chat {chat_index}", alpha=0.7)
-            if analyze_rating and any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) for chat_index in chat_results):
-                axs[plot_idx].set_title('Rating Distribution')
-                axs[plot_idx].set_xlabel('Rating')
-                axs[plot_idx].set_ylabel('Proportion')
-                axs[plot_idx].set_xticks(x)
-                axs[plot_idx].set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
-                axs[plot_idx].legend()
-            plot_idx += 1
+                    ax.bar(x + (idx * bar_width), hist, bar_width,
+                          label=f"Chat {chat_index}", alpha=0.7)
+            
+            ax.set_title('Rating Distribution')
+            ax.set_xlabel('Rating')
+            ax.set_ylabel('Proportion')
+            ax.set_xticks(x)
+            ax.set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
+            ax.legend()
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            plt.close()
 
             # Rating boxplot
-            ratings_data_filtered = [ [r for r in chat_results[chat_index]["ratings"] if r is not None] for chat_index in sorted(chat_results.keys())]
+            fig_rating_box = plt.figure(figsize=(5, 6))
+            ax = fig_rating_box.add_subplot(111)
+            ratings_data_filtered = [[r for r in chat_results[chat_index]["ratings"] if r is not None] 
+                                   for chat_index in sorted(chat_results.keys())]
             labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
-            axs[plot_idx].boxplot(ratings_data_filtered, labels=labels)
-            axs[plot_idx].set_title('Rating Box Plot')
-            axs[plot_idx].set_ylabel('Rating')
-            plot_idx += 1
+            ax.boxplot(ratings_data_filtered, labels=labels)
+            ax.set_title('Rating Box Plot')
+            ax.set_ylabel('Rating')
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            plt.close()
 
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        buf.seek(0)
-        plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        plt.close()
-
-    # Return analysis data, plot, and total cost
-    return analysis_data, plot_base64, total_cost
+    # Return analysis data, plot list, and total cost
+    return analysis_data, plot_base64_list, total_cost
 
 def create_html_report(
     analysis_data,
-    plot_base64,
+    plot_base64_list,
     total_cost,
     chat_data,
     chat_results,
@@ -322,7 +337,6 @@ def create_html_report(
             <p><strong>Response Temperature:</strong> {temperature_response if temperature_response else 'N/A'}</p>
             {f"<p><strong>Rating Model:</strong> {model_rating}</p>" if analyze_rating and model_rating else ""}
             {f"<p><strong>Rating Temperature:</strong> {temperature_rating}</p>" if analyze_rating and temperature_rating else ""}
-            {f"<div class='response-box'><strong>Evaluation Rubric:</strong><br>{evaluation_rubric}</div>" if False else ""}  <!-- Removed global rubric display -->
             {combined_html}
         </div>
 
@@ -332,7 +346,7 @@ def create_html_report(
         <h2>Detailed Analysis</h2>
         {tabulate(analysis_data, headers='firstrow', tablefmt='html')}
 
-        {f"<h2>Visualizations</h2><img src='data:image/png;base64,{plot_base64}' alt='Research Plots' style='max-width: 100%;'>" if plot_base64 else ""}
+        {"".join([f"<h2>Visualizations</h2><img src='data:image/png;base64,{plot}' alt='Research Plot' style='max-width: 100%;'><br>" for plot in plot_base64_list]) if plot_base64_list else ""}
     """
 
     if show_transcripts and chat_results:
@@ -376,7 +390,7 @@ def generate_experiment_xlsx(
     chat_data,
     analysis_data,
     chat_results,
-    plot_base64
+    plot_base64_list
 ):
     # Use the existing generate_settings_xlsx to create the initial BytesIO object
     initial_output = generate_settings_xlsx(settings_dict, chat_data, validate_chat=True)
@@ -488,21 +502,33 @@ def generate_experiment_xlsx(
         for cell in col:
             cell.alignment = Alignment(wrap_text=True)
 
-    # Add Plot Image Sheet
-    if plot_base64:
-        img_sheet_name = "Analysis Plot"
-        # Decode the base64 image
-        img_data = base64.b64decode(plot_base64)
-        image_stream = io.BytesIO(img_data)
-
-        # Create an image object for openpyxl
-        img = OpenPyXLImage(image_stream)
-        img.width, img.height = img.width * 0.5, img.height * 0.5  # Adjust image size if necessary
-
-        # Add a new sheet for the plot image
-        worksheet_plot = workbook.create_sheet(title=img_sheet_name)
-        # Insert the image into the sheet
-        worksheet_plot.add_image(img, 'A1')
+    # Modified plot section in Excel
+    if plot_base64_list:
+        img_sheet = workbook.create_sheet("Analysis Plots")
+        
+        # Define layout parameters
+        row_height = 30  # Height in Excel rows
+        images_per_row = 2
+        
+        for i, plot_base64 in enumerate(plot_base64_list):
+            img_data = base64.b64decode(plot_base64)
+            image_stream = io.BytesIO(img_data)
+            img = OpenPyXLImage(image_stream)
+            
+            # Scale image
+            scale_factor = 0.5
+            img.width = img.width * scale_factor
+            img.height = img.height * scale_factor
+            
+            # Calculate position
+            row = (i // images_per_row) * row_height + 1
+            col = (i % images_per_row) * 6 + 1  # 15 columns spacing between images
+            
+            # Add image to worksheet
+            img_sheet.add_image(img, f'{get_column_letter(col)}{row}')
+            
+            # Adjust row height to accommodate images
+            img_sheet.row_dimensions[row].height = 250
 
     # Save the workbook to a new BytesIO object
     final_output = io.BytesIO()
