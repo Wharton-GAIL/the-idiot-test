@@ -59,12 +59,20 @@ default_experiment_system_message = "This is an important experiment. Please res
 # Function to save API keys using cookies
 def save_api_key(cookie_name, cookie_value):
     if cookie_value:
+        # Set the cookie with the new API key
         cookie_manager.set(
             cookie=cookie_name,
             val=cookie_value,
             expires_at=datetime(year=2030, month=1, day=1),
             key=f"cookie_set_{cookie_name}"
         )
+    else:
+        # If it's blank, delete if the cookie exists
+        if cookie_name in cookie_manager.cookies:
+            cookie_manager.delete(
+                cookie=cookie_name,
+                key=f"cookie_delete_{cookie_name}"
+            )
 
 # Function to get API keys from cookies
 def get_api_key(cookie_name):
