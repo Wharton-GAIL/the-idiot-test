@@ -106,113 +106,134 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
         row.append(f"${cost:.4f}")
     analysis_data.append(row)
 
-    # Generate plots
-    plot_base64_list = []
-    plt.style.use('default')
-
-    plot_cols = 0
-    if analyze_length:
-        plot_cols += 2
-    if analyze_rating:
-        plot_cols += 2
-
-    if plot_cols == 0:
-        # No plots to generate
-        plot_base64_list = []
-    else:
-        # Create separate figures for each plot
-        if analyze_length:
-            # Length distribution histogram
-            fig_length_dist = plt.figure(figsize=(5, 6))
-            ax = fig_length_dist.add_subplot(111)
-            for chat_index in sorted(chat_results.keys()):
-                lengths = [l for l in chat_results[chat_index]["lengths"] if l is not None]
-                if lengths:
-                    hist, bins = np.histogram(lengths, bins=10, density=True)
-                    bin_centers = (bins[:-1] + bins[1:]) / 2
-                    ax.fill_between(bin_centers, hist, alpha=0.5, label=f"Chat {chat_index}")
-            ax.set_title('Response Length Distribution')
-            ax.set_xlabel('Response Length (characters)')
-            ax.set_ylabel('Density')
-            ax.legend()
-            
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
-            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
-
-            # Length boxplot
-            fig_length_box = plt.figure(figsize=(5, 6))
-            ax = fig_length_box.add_subplot(111)
-            lengths_data = [[l for l in chat_results[chat_index]["lengths"] if l is not None] 
-                          for chat_index in sorted(chat_results.keys())]
-            labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
-            ax.boxplot(lengths_data, labels=labels)
-            ax.set_title('Response Length Box Plot')
-            ax.set_ylabel('Response Length (characters)')
-            
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
-            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
-
-        if analyze_rating:
-            # Rating distribution histogram
-            fig_rating_dist = plt.figure(figsize=(5, 6))
-            ax = fig_rating_dist.add_subplot(111)
-            
-            max_rating = max(
-                max(chat_results[chat_index]["ratings"]) 
-                for chat_index in chat_results 
-                if chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"])
-            ) if any(chat_results[chat_index]["ratings"] and any(r is not None for r in chat_results[chat_index]["ratings"]) 
-                    for chat_index in chat_results) else 5
-            
-            bins = np.arange(0, int(max_rating) + 2)
-            
-            for idx, chat_index in enumerate(sorted(chat_results.keys())):
-                ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
-                if ratings:
-                    hist, _ = np.histogram(ratings, bins=bins)
-                    hist = hist / len(ratings)
-                    x = np.arange(len(bins)-1)
-                    bar_width = 0.8 / len(chat_results)
-                    ax.bar(x + (idx * bar_width), hist, bar_width,
-                          label=f"Chat {chat_index}", alpha=0.7)
-            
-            ax.set_title('Rating Distribution')
-            ax.set_xlabel('Rating')
-            ax.set_ylabel('Proportion')
-            ax.set_xticks(x)
-            ax.set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
-            ax.legend()
-            
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
-            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
-
-            # Rating boxplot
-            fig_rating_box = plt.figure(figsize=(5, 6))
-            ax = fig_rating_box.add_subplot(111)
-            ratings_data_filtered = [[r for r in chat_results[chat_index]["ratings"] if r is not None] 
-                                   for chat_index in sorted(chat_results.keys())]
-            labels = [f"Chat {chat_index}" for chat_index in sorted(chat_results.keys())]
-            ax.boxplot(ratings_data_filtered, labels=labels)
-            ax.set_title('Rating Box Plot')
-            ax.set_ylabel('Rating')
-            
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
-            plot_base64_list.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
+    plot_base64_list = generate_plots(chat_results, analyze_length, analyze_rating)
 
     # Return analysis data, plot list, and total cost
     return analysis_data, plot_base64_list, total_cost
+
+def generate_plots(chat_results, analyze_length, analyze_rating):
+    plot_base64_list = []
+    plt.style.use('default')
+
+    if analyze_length:
+        plot_base64_list.extend(generate_length_plots(chat_results))
+
+    if analyze_rating:
+        plot_base64_list.extend(generate_rating_plots(chat_results))
+
+    return plot_base64_list
+
+def generate_length_plots(chat_results):
+    length_plots = []
+
+    # Prepare data
+    lengths_data = []
+    labels = []
+    for chat_index in sorted(chat_results.keys()):
+        lengths = [l for l in chat_results[chat_index]["lengths"] if l is not None]
+        if lengths:
+            lengths_data.append(lengths)
+            labels.append(f"Chat {chat_index}")
+
+    # Check if there is data to plot
+    if not lengths_data:
+        return length_plots
+
+    # Length distribution histogram
+    fig_length_dist = plt.figure(figsize=(5, 6))
+    ax = fig_length_dist.add_subplot(111)
+    for lengths, label in zip(lengths_data, labels):
+        hist, bins = np.histogram(lengths, bins=10, density=True)
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        ax.fill_between(bin_centers, hist, alpha=0.5, label=label)
+    ax.set_title('Response Length Distribution')
+    ax.set_xlabel('Response Length (characters)')
+    ax.set_ylabel('Density')
+    ax.legend()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    length_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    # Length boxplot
+    fig_length_box = plt.figure(figsize=(5, 6))
+    ax = fig_length_box.add_subplot(111)
+    ax.boxplot(lengths_data, labels=labels)
+    ax.set_title('Response Length Box Plot')
+    ax.set_ylabel('Response Length (characters)')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    length_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    return length_plots
+
+def generate_rating_plots(chat_results):
+    rating_plots = []
+
+    # Prepare data
+    ratings_data = []
+    labels = []
+    for chat_index in sorted(chat_results.keys()):
+        ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
+        if ratings:
+            ratings_data.append(ratings)
+            labels.append(f"Chat {chat_index}")
+
+    # Check if there is data to plot
+    if not ratings_data:
+        return rating_plots
+
+    # Rating distribution histogram
+    fig_rating_dist = plt.figure(figsize=(5, 6))
+    ax = fig_rating_dist.add_subplot(111)
+
+    max_rating = max(
+        max(ratings) for ratings in ratings_data if ratings
+    ) if ratings_data else 5
+
+    bins = np.arange(0, int(max_rating) + 2)
+
+    total_chats = len(ratings_data)
+    bar_width = 0.8 / total_chats
+
+    for idx, (ratings, label) in enumerate(zip(ratings_data, labels)):
+        hist, _ = np.histogram(ratings, bins=bins)
+        hist = hist / len(ratings)
+        x = np.arange(len(bins) - 1)
+        ax.bar(x + (idx * bar_width), hist, bar_width, label=label, alpha=0.7)
+
+    ax.set_title('Rating Distribution')
+    ax.set_xlabel('Rating')
+    ax.set_ylabel('Proportion')
+    ax.set_xticks(x + bar_width * (total_chats - 1) / 2)
+    ax.set_xticklabels([f'{i:.1f}' for i in bins[:-1]])
+    ax.legend()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    # Rating boxplot
+    fig_rating_box = plt.figure(figsize=(5, 6))
+    ax = fig_rating_box.add_subplot(111)
+    ax.boxplot(ratings_data, labels=labels)
+    ax.set_title('Rating Box Plot')
+    ax.set_ylabel('Rating')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    return rating_plots
 
 def create_html_report(
     analysis_data,
@@ -507,7 +528,7 @@ def generate_experiment_xlsx(
         img_sheet = workbook.create_sheet("Analysis Plots")
         
         # Define layout parameters
-        row_height = 30  # Height in Excel rows
+        row_height = 2  # Height in Excel rows
         images_per_row = 2
         
         for i, plot_base64 in enumerate(plot_base64_list):
