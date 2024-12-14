@@ -1009,7 +1009,7 @@ if 'chat_data' in locals():
         validate_chat=False
     )
     st.sidebar.download_button(
-        label="Download Experiment",
+        label="Save",
         data=xlsx_data,
         file_name="experiment_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
