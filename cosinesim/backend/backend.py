@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Tuple, Any
-import tensorflow_hub as hub
-from tensorflow import keras
+from typing import List, Dict, Tuple, Any
+from modelManager import ModelManager
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
@@ -12,12 +11,9 @@ import matplotlib.pyplot as plt
 import base64
 import io
 import json
-from fastapi.responses import JSONResponse
 
 app = FastAPI()
-
-# Load the Universal Sentence Encoder
-embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
+model_manager = ModelManager("https://tfhub.dev/google/universal-sentence-encoder/4")
 
 class ExperimentConfig(BaseModel):
     labels: List[str]
@@ -52,7 +48,7 @@ class AnalysisResponse(BaseModel):
     plot: str  # Base64 encoded plot
 
 def get_idea_embeddings(ideas: List[str]) -> np.ndarray:
-    return embed(ideas)
+    return model_manager.embed(ideas)
 
 def calculate_unique_ideas(ideas: List[str], threshold: float = 0.80) -> Tuple[int, int, int]:
     vectors = get_idea_embeddings(ideas)
