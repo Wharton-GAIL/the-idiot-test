@@ -1025,7 +1025,3 @@ if 'chat_data' in locals():
         file_name="experiment_settings.xlsx",  # Changed name to differentiate from results
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-# Display analysis results if they exist
-if 'analysis_results' in st.session_state:
-    display_analysis_results()
