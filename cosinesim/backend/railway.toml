@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pip install uv && uv sync"
+
+[deploy]
+startCommand = "uv run uvicorn backend:app --reload"
