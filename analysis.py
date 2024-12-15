@@ -555,6 +555,10 @@ def generate_experiment_xlsx(
         for c_idx, value in enumerate(row, 1):
             cell = sheet_analysis.cell(row=r_idx, column=c_idx, value=value)
                 
+            # Make header row boldface
+            if r_idx == 1:
+                cell.font = Font(bold=True)
+                
             # Skip header row and first column (metric names)
             if r_idx > 1 and c_idx > 1:
                 if isinstance(value, str):
