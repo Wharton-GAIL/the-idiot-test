@@ -204,6 +204,56 @@ def generate_settings_xlsx(settings_dict, chat_data, schema_path='schema.json', 
             col_letter = xl_col_to_name(idx - 1)
             worksheet_chat.set_column(f'{col_letter}:{col_letter}', 75, wrap_format)
 
+        # Third sheet: Friendly Prompt
+        friendly_records = []
+        for idx, chat in enumerate(chat_data, start=1):
+            # Add system message
+            system_message = chat.get("system_message", "").strip()
+            if system_message:
+                friendly_records.append({
+                    "chat": f"Chat {idx}",
+                    "content": f"⚙️ {system_message}"
+                })
+
+            # Add chat messages
+            messages = chat.get("messages", [])
+            for message in messages:
+                role = message.get("role", "")
+                content = message.get("content", "").strip()
+                
+                if role == "user":
+                    emoji = "🧑"
+                elif role == "assistant":
+                    emoji = "🤖"
+                    if not content:
+                        content = "[AI Responds]"
+                else:
+                    continue
+
+                friendly_records.append({
+                    "chat": f"Chat {idx}",
+                    "content": f"{emoji} {content}"
+                })
+
+        df_friendly = pd.DataFrame(friendly_records)
+        
+        # Pivot the DataFrame to have each chat as a separate column
+        pivot_friendly = df_friendly.pivot_table(
+            index=df_friendly.groupby('chat').cumcount(),
+            columns='chat',
+            values='content',
+            aggfunc='first'
+        )
+
+        # Write to Excel
+        pivot_friendly.to_excel(writer, sheet_name='Friendly Prompt', index=False)
+        worksheet_friendly = writer.sheets['Friendly Prompt']
+
+        # Format the columns
+        for idx, chat in enumerate(sorted(df_friendly['chat'].unique())):
+            col_letter = xl_col_to_name(idx)
+            worksheet_friendly.set_column(f'{col_letter}:{col_letter}', 75, wrap_format)
+
     output.seek(0)
     return output
 
