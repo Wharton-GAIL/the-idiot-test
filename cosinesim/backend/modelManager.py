@@ -4,6 +4,7 @@ import time
 import threading
 import os
 import psutil
+import gc
 
 class ModelManager:
     def __init__(self, model_url: str, idle_timeout: int = 300):
@@ -28,8 +29,10 @@ class ModelManager:
             if (self.model is not None and 
                 self.last_used is not None and 
                 time.time() - self.last_used > self.idle_timeout):
+                del self.model
                 self.model = None
                 tf.keras.backend.clear_session()
+                gc.collect()
                 print("Model unloaded due to inactivity")
     
     def get_model(self):
