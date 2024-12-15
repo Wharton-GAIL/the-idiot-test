@@ -253,11 +253,14 @@ initialize_session_state_from_schema(schema)
 # --- API Keys Section ---
 st.sidebar.header("API Keys")
 
-# Check if any API keys are valid (non-empty strings)
+# Check if any API keys are valid (non-empty strings) from both UI and environment
 are_api_keys_valid = any([
     st.session_state.get('openai_api_key', "").strip(),
     st.session_state.get('anthropic_api_key', "").strip(),
-    st.session_state.get('gemini_api_key', "").strip()
+    st.session_state.get('gemini_api_key', "").strip(),
+    os.environ.get('OPENAI_API_KEY', "").strip(),
+    os.environ.get('ANTHROPIC_API_KEY', "").strip(),
+    os.environ.get('GOOGLE_API_KEY', "").strip()
 ])
 
 # Wrap the API Keys inputs in an expander
