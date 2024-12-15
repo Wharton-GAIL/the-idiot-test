@@ -7,6 +7,14 @@ import base64
 
 st.title("Idea Analysis Dashboard")
 
+# Read server url from .env
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+# Default to localhost if not set
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
 def display_results(response):
     # Display the plot
     image_bytes = base64.b64decode(response['plot'])
@@ -97,9 +105,9 @@ if uploaded_files:
                 "experiments": experiments
             }
             
-            # Make request to backend
+            # Make request to backend (default: http://localhost:8000/analyze)
             response = requests.post(
-                "http://localhost:8000/analyze",
+                f"{BACKEND_URL}/analyze",
                 files=files,
                 data={'config': json.dumps(config_data)}
             )
