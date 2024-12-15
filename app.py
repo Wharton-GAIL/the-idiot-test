@@ -905,9 +905,6 @@ def run_analysis(
         'xlsx_with_results': xlsx_with_results
     }
 
-    # Display download buttons and HTML report
-    display_analysis_results()
-
 def display_analysis_results():
     if 'analysis_results' in st.session_state:
         # Download button for the HTML report
