@@ -1022,6 +1022,9 @@ if 'chat_data' in locals():
     st.sidebar.download_button(
         label="Save",
         data=xlsx_data,
-        file_name="experiment_settings.xlsx",  # Changed name to differentiate from results
+        file_name="experiment_settings.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Always display analysis results if they exist
+display_analysis_results()
