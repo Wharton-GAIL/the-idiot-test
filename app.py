@@ -679,7 +679,7 @@ def rate_response(response, settings_rating, rating_prompt_template):
     rating_response, rating_cost = call_gpt(**rating_kwargs)
     if not rating_response.strip().endswith(']'):
         rating_response += "]"
-    rating_match = re.search(r'\[(\d+\.?\d*)\]', rating_response)
+    rating_match = re.search(r'\\?\[(\d+\.?\d*)\\?\]', rating_response)
     if rating_match:
         rating = float(rating_match.group(1))
         return rating, rating_cost, rating_response

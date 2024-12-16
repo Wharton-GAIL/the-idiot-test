@@ -11,13 +11,11 @@ from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenPyXLImage
 from PIL import Image as PILImage
 from openpyxl import load_workbook, Workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.drawing.image import Image as OpenPyXLImage
-from PIL import Image as PILImage
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment
 from import_export import generate_settings_xlsx
 from scipy.stats import t
+from scipy.stats import norm
 
 
 def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
@@ -49,11 +47,11 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
                 row.append(value)
             analysis_data.append(row)
 
-    row = ["Iterations per chat"]
-    for chat_index in sorted(chat_results.keys()):
-        iterations = len(chat_results[chat_index]["responses"])
-        row.append(str(iterations))
-    analysis_data.append(row)
+        row = ["Iterations per chat"]
+        for chat_index in sorted(chat_results.keys()):
+            iterations = len(chat_results[chat_index]["responses"])
+            row.append(str(iterations))
+        analysis_data.append(row)
 
     if analyze_rating:
         ratings_data = []
@@ -65,94 +63,178 @@ def generate_analysis(chat_results, analyze_rating=True, analyze_length=True):
                 empty_rating_chats.append(f"Chat {chat_index}")
             ratings_data.append(ratings)
 
+        # Check if all ratings are 0 or 1
+        all_binary = all(
+            all(r in (0, 1) for r in ratings) for ratings in ratings_data if ratings
+        )
+
         # Print error if any chat has no valid ratings
         if empty_rating_chats:
             error_message = f"Error: No valid ratings found for {', '.join(empty_rating_chats)}."
             print(error_message)  # Prints to console
             st.error(error_message)  # Displays error in Streamlit app
 
-        metrics = ["Average Rating", "95% CI of Rating", "SEM of Rating", "Std Dev of Rating", "Minimum Rating", "Maximum Rating"]
-        stats_funcs = [
-            statistics.mean,
-            lambda x: f"±{1.96 * statistics.stdev(x) / np.sqrt(len(x)):.2f}",  # 95% CI normal-based
-            lambda x: statistics.stdev(x) / np.sqrt(len(x)),  # SEM
-            statistics.stdev,
-            min,
-            max
-        ]
-        for metric, func in zip(metrics, stats_funcs):
-            row = [metric]
+        if all_binary:
+            # Binary ratings analysis
+            metrics = ["Proportion of Positive Ratings", "95% CI of Proportion", "Sample Size (N)"]
+            analysis_rows = {metric: [metric] for metric in metrics}
+
             for ratings in ratings_data:
                 if ratings:
-                    if func == statistics.stdev and len(ratings) < 2:
-                        value = "N/A"
-                    else:
-                        try:
-                            result = func(ratings)
-                            # Check if result is already a string (like for CI function)
-                            if isinstance(result, str):
-                                value = result
-                            else:
-                                value = f"{result:.2f}"
-                        except Exception:
+                    n = len(ratings)
+                    p_hat = sum(ratings) / n
+                    se = np.sqrt(p_hat * (1 - p_hat) / n)
+                    # 95% Confidence Interval using normal approximation
+                    ci_lower = max(0, p_hat - 1.96 * se)
+                    ci_upper = min(1, p_hat + 1.96 * se)
+                    analysis_rows["Proportion of Positive Ratings"].append(f"{p_hat:.3f}")
+                    analysis_rows["95% CI of Proportion"].append(f"[{ci_lower:.3f}, {ci_upper:.3f}]")
+                    analysis_rows["Sample Size (N)"].append(str(n))
+                else:
+                    for metric in metrics:
+                        analysis_rows[metric].append("N/A")
+
+            for metric in metrics:
+                analysis_data.append(analysis_rows[metric])
+        else:
+            # Continuous ratings analysis
+            metrics = ["Average Rating", "95% CI of Rating", "SEM of Rating", "Std Dev of Rating", "Minimum Rating", "Maximum Rating"]
+            stats_funcs = [
+                statistics.mean,
+                lambda x: f"±{1.96 * statistics.stdev(x) / np.sqrt(len(x)):.2f}",  # 95% CI normal-based
+                lambda x: statistics.stdev(x) / np.sqrt(len(x)),  # SEM
+                statistics.stdev,
+                min,
+                max
+            ]
+            for metric, func in zip(metrics, stats_funcs):
+                row = [metric]
+                for ratings in ratings_data:
+                    if ratings:
+                        if func == statistics.stdev and len(ratings) < 2:
                             value = "N/A"
+                        else:
+                            try:
+                                result = func(ratings)
+                                # Check if result is already a string (like for CI function)
+                                if isinstance(result, str):
+                                    value = result
+                                else:
+                                    value = f"{result:.2f}"
+                            except Exception:
+                                value = "N/A"
+                    else:
+                        value = "N/A"
+                    row.append(value)
+                analysis_data.append(row)
+
+            row = ["Sample Size (N)"]
+            for ratings in ratings_data:
+                row.append(str(len(ratings)) if ratings else "N/A")
+            analysis_data.append(row)
+
+            # 95% t-based CI half-width: t_{0.975, df=n-1} * s/sqrt(n)
+            # If n < 2, "N/A"
+            row = ["95% CI of Rating (T-based)"]
+            for ratings in ratings_data:
+                if ratings and len(ratings) > 1:
+                    n = len(ratings)
+                    m = statistics.mean(ratings)
+                    s = statistics.stdev(ratings)
+                    se = s / np.sqrt(n)
+                    t_crit = t.ppf(0.975, df=n-1)
+                    ci_half = t_crit * se
+                    value = f"{m:.2f} ±{ci_half:.2f}"
+                elif ratings and len(ratings) == 1:
+                    # Only one rating, can't form a CI
+                    value = "N/A"
                 else:
                     value = "N/A"
                 row.append(value)
             analysis_data.append(row)
 
-        row = ["Sample Size (N)"]
-        for ratings in ratings_data:
-            row.append(str(len(ratings)) if ratings else "N/A")
+        # Add total cost per chat
+        row = ["Cost"]
+        for chat_index in sorted(chat_results.keys()):
+            cost = chat_results[chat_index]["total_cost"]
+            row.append(f"${cost:.4f}")
         analysis_data.append(row)
 
-        # 95% t-based CI half-width: t_{0.975, df=n-1} * s/sqrt(n)
-        # If n < 2, "N/A"
-        row = ["95% CI of Rating (T-based)"]
-        for ratings in ratings_data:
-            if ratings and len(ratings) > 1:
-                n = len(ratings)
-                m = statistics.mean(ratings)
-                s = statistics.stdev(ratings)
-                se = s / np.sqrt(n)
-                t_crit = t.ppf(0.975, df=n-1)
-                ci_half = t_crit * se
-                value = f"{m:.2f} ±{ci_half:.2f}"
-            elif ratings and len(ratings) == 1:
-                # Only one rating, can't form a CI
-                value = "N/A"
-            else:
-                value = "N/A"
-            row.append(value)
-        analysis_data.append(row)
+        plot_base64_list = generate_plots(chat_results, analyze_length, analyze_rating, all_binary=all_binary)
 
-    # Add total cost per chat
-    row = ["Cost"]
-    for chat_index in sorted(chat_results.keys()):
-        cost = chat_results[chat_index]["total_cost"]
-        row.append(f"${cost:.4f}")
-    analysis_data.append(row)
+        return analysis_data, plot_base64_list, total_cost
 
-    plot_base64_list = generate_plots(chat_results, analyze_length, analyze_rating)
-
-    return analysis_data, plot_base64_list, total_cost
-
-def generate_plots(chat_results, analyze_length, analyze_rating):
+def generate_plots(chat_results, analyze_length, analyze_rating, all_binary=False):
     plot_base64_list = []
     plt.style.use('default')
-    plt.rcParams.update({'font.size': 16}) #bigger text for older eyes
+    plt.rcParams.update({'font.size': 16})  # bigger text for older eyes
 
     if analyze_length:
         plot_base64_list.extend(generate_length_plots(chat_results))
 
     if analyze_rating:
-        plot_base64_list.extend(generate_rating_plots(chat_results))
+        if all_binary:
+            plot_base64_list.extend(generate_binary_rating_plots(chat_results))
+        else:
+            plot_base64_list.extend(generate_rating_plots(chat_results))
 
-        rating_violin = generate_rating_violin_plot(chat_results)
-        if rating_violin is not None:
-            plot_base64_list.append(rating_violin)
+            rating_violin = generate_rating_violin_plot(chat_results)
+            if rating_violin is not None:
+                plot_base64_list.append(rating_violin)
 
     return plot_base64_list
+
+def generate_binary_rating_plots(chat_results):
+    rating_plots = []
+
+    # Prepare data
+    ratings_data = []
+    labels = []
+    proportions = []
+    ci_bounds = []
+    for chat_index in sorted(chat_results.keys()):
+        ratings = [r for r in chat_results[chat_index]["ratings"] if r is not None]
+        if ratings:
+            ratings_data.append(ratings)
+            labels.append(f"Chat {chat_index}")
+            n = len(ratings)
+            p_hat = sum(ratings) / n
+            proportions.append(p_hat)
+            se = np.sqrt(p_hat * (1 - p_hat) / n)
+            ci_lower = max(0, p_hat - 1.96 * se)
+            ci_upper = min(1, p_hat + 1.96 * se)
+            ci_bounds.append((ci_lower, ci_upper))
+
+    if not ratings_data:
+        return rating_plots
+
+    # Proportion Bar Chart with 95% CI
+    fig_rating_ci = plt.figure(figsize=(5, 6))
+    ax = fig_rating_ci.add_subplot(111)
+
+    x_positions = np.arange(len(labels))
+    y_errors = [(p - lower, upper - p) for p, (lower, upper) in zip(proportions, ci_bounds)]
+    lower_errors, upper_errors = zip(*y_errors)
+    ax.bar(x_positions, proportions, yerr=[lower_errors, upper_errors],
+           align='center', alpha=0.7, ecolor='black', capsize=5)
+    ax.set_title('Proportion of Positive Ratings with 95% CI')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Proportion of Positive Ratings')
+    ax.set_ylim(0, 1)
+    ax.yaxis.grid(True)
+
+    # Annotate bars with proportion values
+    for x, p in zip(x_positions, proportions):
+        ax.text(x, p + 0.05, f'{p:.2f}', ha='center', va='bottom')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
+    return rating_plots
 
 def generate_length_plots(chat_results):
     length_plots = []
@@ -330,7 +412,6 @@ def generate_rating_plots(chat_results):
 
     return rating_plots
 
-
 def generate_rating_violin_plot(chat_results):
     # ADDED: A violin plot for ratings
     ratings_data = []
@@ -358,7 +439,6 @@ def generate_rating_violin_plot(chat_results):
     plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
     plt.close()
     return plot_base64
-
 
 def create_html_report(
     analysis_data,
@@ -531,7 +611,6 @@ def create_html_report(
 
     return html_content
 
-
 def generate_experiment_xlsx(
     settings_dict,
     chat_data,
@@ -554,16 +633,16 @@ def generate_experiment_xlsx(
     for r_idx, row in enumerate(dataframe_to_rows(df_analysis, index=False, header=True), 1):
         for c_idx, value in enumerate(row, 1):
             cell = sheet_analysis.cell(row=r_idx, column=c_idx, value=value)
-                
+
             # Make header row boldface
             if r_idx == 1:
                 cell.font = Font(bold=True)
-                
+
             # Skip header row and first column (metric names)
             if r_idx > 1 and c_idx > 1:
                 if isinstance(value, str):
-                    if value == 'N/A':
-                        cell.value = 'N/A'
+                    if value == 'N/A' or '[' in value:
+                        cell.value = value
                     elif value.startswith('$'):
                         # Convert currency string to number
                         cell.value = float(value.replace('$', ''))
@@ -572,8 +651,10 @@ def generate_experiment_xlsx(
                         # Convert other numeric strings to numbers
                         try:
                             cell.value = float(value)
-                            # Use 2 decimal places for ratings, 1 for lengths
-                            if 'Rating' in df_analysis.iloc[r_idx-1, 0]:
+                            # Use appropriate number format
+                            if 'Proportion' in df_analysis.iloc[r_idx-2, 0]:
+                                cell.number_format = '0.000'
+                            elif 'Rating' in df_analysis.iloc[r_idx-2, 0]:
                                 cell.number_format = '0.00'
                             else:
                                 cell.number_format = '0.0'
