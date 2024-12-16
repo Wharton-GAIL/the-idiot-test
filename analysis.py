@@ -251,6 +251,38 @@ def generate_rating_plots(chat_results):
     if not ratings_data:
         return rating_plots
 
+    # Mean rating with 95% CI
+    means = []
+    cis = []
+    for ratings in ratings_data:
+        if len(ratings) > 1:
+            m = statistics.mean(ratings)
+            se = statistics.stdev(ratings) / np.sqrt(len(ratings))
+            ci = 1.96 * se
+            means.append(m)
+            cis.append(ci)
+        else:
+            # If only one rating, no CI can be computed. We'll show no error bar.
+            means.append(ratings[0])
+            cis.append(0)
+
+    fig_rating_ci = plt.figure(figsize=(5,6))
+    ax = fig_rating_ci.add_subplot(111)
+
+    x_positions = np.arange(len(labels))
+    ax.bar(x_positions, means, yerr=cis, align='center', alpha=0.7, ecolor='black', capsize=5)
+    ax.set_title('Mean Rating with 95% CI')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Rating')
+    ax.yaxis.grid(True)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+    plt.close()
+
     # Rating distribution histogram
     fig_rating_dist = plt.figure(figsize=(5, 6))
     ax = fig_rating_dist.add_subplot(111)
@@ -289,38 +321,6 @@ def generate_rating_plots(chat_results):
     ax.boxplot(ratings_data, labels=labels)
     ax.set_title('Rating Box Plot')
     ax.set_ylabel('Rating')
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    rating_plots.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-    plt.close()
-
-    # Mean rating with 95% CI
-    means = []
-    cis = []
-    for ratings in ratings_data:
-        if len(ratings) > 1:
-            m = statistics.mean(ratings)
-            se = statistics.stdev(ratings) / np.sqrt(len(ratings))
-            ci = 1.96 * se
-            means.append(m)
-            cis.append(ci)
-        else:
-            # If only one rating, no CI can be computed. We'll show no error bar.
-            means.append(ratings[0])
-            cis.append(0)
-
-    fig_rating_ci = plt.figure(figsize=(5,6))
-    ax = fig_rating_ci.add_subplot(111)
-
-    x_positions = np.arange(len(labels))
-    ax.bar(x_positions, means, yerr=cis, align='center', alpha=0.7, ecolor='black', capsize=5)
-    ax.set_title('Mean Rating with 95% CI')
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels(labels)
-    ax.set_ylabel('Rating')
-    ax.yaxis.grid(True)
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
