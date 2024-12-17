@@ -89,8 +89,8 @@ for api_key in ['openai_api_key', 'anthropic_api_key', 'gemini_api_key']:
 
 def get_responses(messages, settings_response, system_message=None):
     total_steps = len(messages)
-    logger.info(f"Fetching responses for {total_steps} messages:")
-    logger.info(messages)
+    logger.debug(f"Fetching responses for {total_steps} messages:")
+    logger.debug(messages)
     completed_messages = []
     total_response_cost = 0.0
 
@@ -123,6 +123,7 @@ def get_responses(messages, settings_response, system_message=None):
                     kwargs["system_prompt"] = system_message
                 try:    
                     response, response_cost = call_gpt(**kwargs)
+                    logger.info(f"Response: {response}")
                 except Exception as e:
                     logger.info(f"Error getting response for message: {message}\n Error:\n{e}")
                     response = ""
@@ -149,6 +150,7 @@ def get_responses(messages, settings_response, system_message=None):
         kwargs["system_prompt"] = system_message
     try:    
         response, response_cost = call_gpt(**kwargs)
+        logger.info(f"Final response: {response}")
     except Exception as e:
         logger.info(f"Error getting final response: {e}")
         response = ""
@@ -677,6 +679,7 @@ def rate_response(response, settings_rating, rating_prompt_template):
     }
 
     rating_response, rating_cost = call_gpt(**rating_kwargs)
+    logger.info(f"Rating response: {rating_response}")
     if not rating_response.strip().endswith(']'):
         rating_response += "]"
     rating_match = re.search(r'\\?\[(\d+\.?\d*)\\?\]', rating_response)
@@ -699,7 +702,7 @@ def run_single_iteration(args):
         analyze_rating
     ) = args
     try:
-        logger.info(f"Chat {chat_index} iteration {iteration_index + 1} started.")
+        logger.debug(f"Chat {chat_index} iteration {iteration_index + 1} started.")
         updated_messages, response_cost = get_responses(
             copy.deepcopy(chat_info["messages"]),
             settings_response,
