@@ -5,9 +5,15 @@
          "type": "int",
          "default": 3,
          "min_value": 1,
-         "max_value": 50,
+         "max_value": 100,
          "step": 1,
          "help": "Number of times to run each prompt."
+       },
+       "10x_iterations": {
+         "title": "10x iterations",
+         "type": "bool",
+         "default": false,
+         "help": "Multiply the number of iterations by 10"
        },
        "model_response": {
          "title": "Model for Response Generation",

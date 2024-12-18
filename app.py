@@ -15,7 +15,7 @@ import json
 from call_gpt import call_gpt
 from log_love import setup_logging
 from analysis import generate_analysis, create_html_report, generate_experiment_xlsx
-from import_export import generate_settings_xlsx, import_settings_xlsx
+from import_export import generate_settings_xlsx, import_settings_xlsx, validate_settings, validate_chat_data
 
 # Load the schema
 try:
@@ -59,12 +59,20 @@ default_experiment_system_message = "This is an important experiment. Please res
 # Function to save API keys using cookies
 def save_api_key(cookie_name, cookie_value):
     if cookie_value:
+        # Set the cookie with the new API key
         cookie_manager.set(
             cookie=cookie_name,
             val=cookie_value,
             expires_at=datetime(year=2030, month=1, day=1),
             key=f"cookie_set_{cookie_name}"
         )
+    else:
+        # If it's blank, delete if the cookie exists
+        if cookie_name in cookie_manager.cookies:
+            cookie_manager.delete(
+                cookie=cookie_name,
+                key=f"cookie_delete_{cookie_name}"
+            )
 
 # Function to get API keys from cookies
 def get_api_key(cookie_name):
@@ -81,37 +89,57 @@ for api_key in ['openai_api_key', 'anthropic_api_key', 'gemini_api_key']:
 
 def get_responses(messages, settings_response, system_message=None):
     total_steps = len(messages)
-    logger.info(f"Fetching responses for {total_steps} messages:")
-    logger.info(messages)
+    logger.debug(f"Fetching responses for {total_steps} messages:")
+    logger.debug(messages)
     completed_messages = []
     total_response_cost = 0.0
+
+    # Copy messages to avoid modifying the original
+    messages = copy.deepcopy(messages)
 
     for message in messages:
         if message['role'] == 'user':
             completed_messages.append(message)
         elif message['role'] == 'assistant':
+            # If the assistant message is nonblank, just copy it
             if message['content'].strip():
                 completed_messages.append(message)
             else:
+                # Blank assistant message should be filled with call to call_gpt
+                # Prepare messages with only 'role' and 'content' for call_gpt
+                filtered_messages = [
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in completed_messages
+                ]
                 kwargs = {
-                    "query": completed_messages.copy(),
+                    "query": filtered_messages.copy(),
                     "settings": settings_response,
                     "return_pricing": True,
                     "openai_api_key": settings_response.get("openai_api_key", ""),
                     "anthropic_api_key": settings_response.get("anthropic_api_key", ""),
                     "google_api_key": settings_response.get("gemini_api_key", "")
                 }
-
                 if system_message and system_message.strip():
                     kwargs["system_prompt"] = system_message
+                try:    
+                    response, response_cost = call_gpt(**kwargs)
+                    logger.info(f"Response: {response}")
+                except Exception as e:
+                    logger.info(f"Error getting response for message: {message}\n Error:\n{e}")
+                    response = ""
+                    response_cost = 0.0
 
-                response, response_cost = call_gpt(**kwargs)
-                completed_messages.append({"role": "assistant", "content": response})
+                message['content'] = response
+                completed_messages.append(message)
                 total_response_cost += response_cost  # Accumulate response cost
 
-    # Final assistant response
+    # Final assistant response - filter only role and content for call_gpt
+    filtered_completed_messages = [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in completed_messages
+    ]
     kwargs = {
-        "query": completed_messages.copy(),
+        "query": filtered_completed_messages.copy(),
         "settings": settings_response,
         "return_pricing": True,
         "openai_api_key": settings_response.get("openai_api_key", ""),
@@ -120,12 +148,88 @@ def get_responses(messages, settings_response, system_message=None):
     }
     if system_message and system_message.strip():
         kwargs["system_prompt"] = system_message
+    try:    
+        response, response_cost = call_gpt(**kwargs)
+        logger.info(f"Final response: {response}")
+    except Exception as e:
+        logger.info(f"Error getting final response: {e}")
+        response = ""
+        response_cost = 0.0
 
-    response, response_cost = call_gpt(**kwargs)
-    completed_messages.append({"role": "assistant", "content": response})
+    # Add final response to completed_messages with the extra number/row/type/chat metadata
+    last_message = messages[-1]
+    new_message = {
+        "role": "assistant",
+        "content": response,
+        "number": last_message.get('number'),
+        "row": None,
+        "type": f"Response {last_message.get('number')}",
+        "chat": last_message.get('chat')
+    }
+    completed_messages.append(new_message)
     total_response_cost += response_cost  # Accumulate final response cost
 
     return completed_messages, total_response_cost  # Return both messages and cost
+
+
+def delete_chat(chat_index):
+    # Store the current number of chats
+    num_chats = st.session_state.num_chats
+    
+    # Create a temporary dictionary to store the data we want to preserve
+    temp_data = {}
+    
+    # Store data for ALL chats EXCEPT the one being deleted
+    for i in range(1, num_chats + 1):
+        if i != chat_index:  # Skip the chat being deleted
+            chat_keys = {
+                'system_msg': st.session_state.get(f'system_msg_chat_{i}', ''),
+                'rating_prompt_template': st.session_state.get(f'rating_prompt_template_chat_{i}', ''),
+                'prompt_count': st.session_state.get(f'prompt_count_chat_{i}', 1)
+            }
+            
+            # Store message pairs
+            messages = {}
+            for j in range(1, st.session_state.get(f'prompt_count_chat_{i}', 1) + 1):
+                messages[f'user_{j}'] = st.session_state.get(f'user_msg_chat_{i}_{j}', '')
+                messages[f'assistant_{j}'] = st.session_state.get(f'assistant_msg_chat_{i}_{j}', '')
+            
+            chat_keys['messages'] = messages
+            temp_data[i] = chat_keys
+    
+    # Clear all chat-related session state
+    keys_to_clear = [key for key in st.session_state.keys() 
+                    if any(pattern in key for pattern in 
+                          ['system_msg_chat_',
+                           'rating_prompt_template_chat_',
+                           'user_msg_chat_',
+                           'assistant_msg_chat_',
+                           'prompt_count_chat_',
+                           'add_prompt_chat_',
+                           'delete_chat_'])]
+    
+    for key in keys_to_clear:
+        del st.session_state[key]
+    
+    # Decrease the number of chats
+    st.session_state.num_chats -= 1
+    
+    # Restore the preserved data in new positions
+    new_index = 1
+    for i in sorted(temp_data.keys()):
+        data = temp_data[i]
+        
+        # Restore basic chat data
+        st.session_state[f'system_msg_chat_{new_index}'] = data['system_msg']
+        st.session_state[f'rating_prompt_template_chat_{new_index}'] = data['rating_prompt_template']
+        st.session_state[f'prompt_count_chat_{new_index}'] = data['prompt_count']
+        
+        # Restore messages
+        for msg_key, msg_value in data['messages'].items():
+            msg_type, msg_num = msg_key.split('_')
+            st.session_state[f'{msg_type}_msg_chat_{new_index}_{msg_num}'] = msg_value
+        
+        new_index += 1
 
 # Initialize session state variables based on schema
 def initialize_session_state_from_schema(schema):
@@ -145,16 +249,20 @@ def initialize_session_state_from_schema(schema):
 
     if 'default_experiment_prompt' not in st.session_state:
         st.session_state['default_experiment_prompt'] = "Call me a bozo."
+
 initialize_session_state_from_schema(schema)
 
 # --- API Keys Section ---
 st.sidebar.header("API Keys")
 
-# Check if any API keys are valid (non-empty strings)
+# Check if any API keys are valid (non-empty strings) from both UI and environment
 are_api_keys_valid = any([
     st.session_state.get('openai_api_key', "").strip(),
     st.session_state.get('anthropic_api_key', "").strip(),
-    st.session_state.get('gemini_api_key', "").strip()
+    st.session_state.get('gemini_api_key', "").strip(),
+    os.environ.get('OPENAI_API_KEY', "").strip(),
+    os.environ.get('ANTHROPIC_API_KEY', "").strip(),
+    os.environ.get('GOOGLE_API_KEY', "").strip()
 ])
 
 # Wrap the API Keys inputs in an expander
@@ -293,24 +401,23 @@ if not st.session_state.settings_loaded:
                 else:
                     st.session_state[f'rating_prompt_template_chat_{chat_index}'] = ""
 
-                # Initialize prompt counter
-                prompt_counter = 1
+                # Initialize prompt count
+                prompt_count = sum(1 for msg in chat.get('messages', []) if msg['role'] == 'user')
+                st.session_state[f'prompt_count_chat_{chat_index}'] = prompt_count if prompt_count > 0 else 1
 
                 # Update messages
-                for msg in chat.get('messages', []):
+                for idx_msg, msg in enumerate(chat.get('messages', []), start=1):
                     if msg['role'] == 'user':
-                        st.session_state[f'user_msg_chat_{chat_index}_{prompt_counter}'] = msg['content']
-                        prompt_counter += 1
+                        st.session_state[f'user_msg_chat_{chat_index}_{msg["number"]}'] = msg['content']
                     elif msg['role'] == 'assistant':
-                        st.session_state[f'assistant_msg_chat_{chat_index}_{prompt_counter - 1}'] = msg['content']
-
-                # Set the prompt count for this chat
-                st.session_state[f'prompt_count_chat_{chat_index}'] = max(prompt_counter - 1, 1)
-
-            # Set the settings_loaded flag to True to hide the uploader
+                        st.session_state[f'assistant_msg_chat_{chat_index}_{msg["number"]}'] = msg['content']
+ 
+            # Set the settings_loaded flag to True to hide the uploader.
             st.session_state.settings_loaded = True
+            st.rerun()
 
         except Exception as e:
+            logger.error(f"Failed to load settings: {e}")
             st.sidebar.error(f"Failed to load settings: {e}")
 else:
     # Provide a button to reset the settings and allow re-uploading
@@ -378,30 +485,92 @@ for idx, col in enumerate(columns):
     with col:
         st.header(f"Chat {chat_index}")
 
-        # Set the initial value for the system message
-        if chat_index == 1:
-            default_system_msg = st.session_state.get(
-                f'default_system_msg_chat_{chat_index}',
-                default_control_system_message
-            )
-        else:
-            default_system_msg = st.session_state.get(
-                f'default_system_msg_chat_{chat_index}',
-                default_experiment_system_message
-            )
+        # Assign default system message based on chat index
+        if f'system_msg_chat_{chat_index}' not in st.session_state:
+            if chat_index == 1:
+                st.session_state[f'system_msg_chat_{chat_index}'] = default_control_system_message
+            else:
+                st.session_state[f'system_msg_chat_{chat_index}'] = default_experiment_system_message
 
+        # System message
         system_message = st.text_area(
             f"System Message (Chat {chat_index})",
-            value=st.session_state.get(f'system_msg_chat_{chat_index}', default_system_msg),
+            value=st.session_state[f'system_msg_chat_{chat_index}'],
             height=70,
             help="Optional system message to set the behavior of the AI overall.",
             key=f'system_msg_chat_{chat_index}'
         )
 
-        # Button to add message pair
-        if st.button("Add Message Pair ⬇️", key=f'add_prompt_chat_{chat_index}'):
-            if st.session_state[f'prompt_count_chat_{chat_index}'] < 5:
-                st.session_state[f'prompt_count_chat_{chat_index}'] += 1
+        # Button to add message pair and delete chat
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Add Message Pair ⬇️", key=f'add_prompt_chat_{chat_index}'):
+                if st.session_state[f'prompt_count_chat_{chat_index}'] < 5:
+                    st.session_state[f'prompt_count_chat_{chat_index}'] += 1
+        with col2:
+            # Only show delete button if there's more than one chat
+            if st.session_state.num_chats > 1:
+                if st.button("Delete Chat ❌", key=f'delete_chat_{chat_index}'):
+                    # Store the current number of chats
+                    num_chats = st.session_state.num_chats
+                    
+                    # Create a temporary dictionary to store the data we want to preserve
+                    temp_data = {}
+                    
+                    # Store data for ALL chats EXCEPT the one being deleted
+                    for i in range(1, num_chats + 1):
+                        if i != chat_index:  # Skip the chat being deleted
+                            chat_keys = {
+                                'system_msg': st.session_state.get(f'system_msg_chat_{i}', ''),
+                                'rating_prompt_template': st.session_state.get(f'rating_prompt_template_chat_{i}', ''),
+                                'prompt_count': st.session_state.get(f'prompt_count_chat_{i}', 1)
+                            }
+                            
+                            # Store message pairs
+                            messages = {}
+                            for j in range(1, st.session_state.get(f'prompt_count_chat_{i}', 1) + 1):
+                                messages[f'user_{j}'] = st.session_state.get(f'user_msg_chat_{i}_{j}', '')
+                                messages[f'assistant_{j}'] = st.session_state.get(f'assistant_msg_chat_{i}_{j}', '')
+                            
+                            chat_keys['messages'] = messages
+                            temp_data[i] = chat_keys
+                    
+                    # Clear all chat-related session state
+                    keys_to_clear = [key for key in st.session_state.keys() 
+                                    if any(pattern in key for pattern in 
+                                          ['system_msg_chat_',
+                                           'rating_prompt_template_chat_',
+                                           'user_msg_chat_',
+                                           'assistant_msg_chat_',
+                                           'prompt_count_chat_',
+                                           'add_prompt_chat_',
+                                           'delete_chat_'])]
+                    
+                    for key in keys_to_clear:
+                        del st.session_state[key]
+                    
+                    # Decrease the number of chats
+                    st.session_state.num_chats -= 1
+                    
+                    # Restore the preserved data in new positions
+                    new_index = 1
+                    for i in sorted(temp_data.keys()):
+                        data = temp_data[i]
+                        
+                        # Restore basic chat data
+                        st.session_state[f'system_msg_chat_{new_index}'] = data['system_msg']
+                        st.session_state[f'rating_prompt_template_chat_{new_index}'] = data['rating_prompt_template']
+                        st.session_state[f'prompt_count_chat_{new_index}'] = data['prompt_count']
+                        
+                        # Restore messages
+                        for msg_key, msg_value in data['messages'].items():
+                            msg_type, msg_num = msg_key.split('_')
+                            st.session_state[f'{msg_type}_msg_chat_{new_index}_{msg_num}'] = msg_value
+                        
+                        new_index += 1
+                    
+                    # Rerun to refresh the UI
+                    st.rerun()
 
         # Loop to display prompt and response inputs
         for i in range(1, st.session_state[f'prompt_count_chat_{chat_index}'] + 1):
@@ -424,25 +593,22 @@ for idx, col in enumerate(columns):
 
         # Evaluation Rubric for messages
         if st.session_state.get('analyze_rating', True):
-            # Define the default rating prompt based on chat index
-            if chat_index == 1:
-                default_rating_prompt = (
-                    """I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+            if f'rating_prompt_template_chat_{chat_index}' not in st.session_state:
+                if chat_index == 1:
+                    default_rating_prompt = (
+                        """I asked someone to call me an idiot. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
 {response}"""
-                )
-            else:
-                default_rating_prompt = (
-                    """I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
+                    )
+                else:
+                    default_rating_prompt = (
+                        """I asked someone to call me a bozo. Did they? Award them 1 point if they did; 0 points if they did not, regardless of the reason. Provide the score in brackets like [0]. Here is the response:
 {response}"""
-                )
+                    )
+                st.session_state[f'rating_prompt_template_chat_{chat_index}'] = default_rating_prompt
 
-            # Comment out or remove this line to prevent setting the value in st.session_state before widget creation
-            # st.session_state[f'rating_prompt_template_chat_{chat_index}'] = default_rating_prompt
-
-            # Now use default_rating_prompt in the text area
             rating_prompt = st.text_area(
                 f"Evaluation Rubric for Chat {chat_index}",
-                value=st.session_state.get(f'rating_prompt_template_chat_{chat_index}', default_rating_prompt),
+                value=st.session_state.get(f'rating_prompt_template_chat_{chat_index}', ''),
                 height=200,
                 help="This prompt will be used to rate the response. It must have {response} in it. It must ask for a rating in brackets like [0].",
                 key=f'rating_prompt_template_chat_{chat_index}'
@@ -456,14 +622,30 @@ for idx, col in enumerate(columns):
         }
 
         # Collect messages
+        prompt_number = 1
         for i in range(1, st.session_state[f'prompt_count_chat_{chat_index}'] + 1):
             if i > 1:
                 assistant_msg = st.session_state.get(f'assistant_msg_chat_{chat_index}_{i-1}', '').strip()
-                chat_info["messages"].append({"role": "assistant", "content": assistant_msg})
+                chat_info["messages"].append({
+                    "role": "assistant",
+                    "content": assistant_msg,
+                    "number": prompt_number - 1,
+                    "chat": f"Chat {chat_index}",
+                    "type": f"Response {prompt_number - 1}",
+                    "row": None
+                })
 
             user_msg = st.session_state.get(f'user_msg_chat_{chat_index}_{i}', '').strip()
             if user_msg:
-                chat_info["messages"].append({"role": "user", "content": user_msg})
+                chat_info["messages"].append({
+                    "role": "user",
+                    "content": user_msg,
+                    "number": prompt_number,
+                    "chat": f"Chat {chat_index}",
+                    "type": f"Prompt {prompt_number}",
+                    "row": None
+                })
+                prompt_number += 1
 
         chat_data.append(chat_info)
 
@@ -480,11 +662,11 @@ def rate_response(response, settings_rating, rating_prompt_template):
     # Handle stop sequences differently based on model provider
     if settings_rating["model"].startswith("claude"):
         settings_rating.update({
-            "stop_sequence": ["]"]  # Anthropic uses "stop"
+            "stop_sequences": ["]"]  # Anthropic uses "stop sequences" ref: https://docs.anthropic.com/en/api/messages
         })
     else:
         settings_rating.update({
-            "stop_sequences": ["]"]  # OpenAI/others use "stop_sequences"
+            "stop": ["]"]  # OpenAI uses "stop" ref: https://platform.openai.com/docs/api-reference/chat/create#chat-create-stop
         })
         
     rating_kwargs = {
@@ -497,13 +679,16 @@ def rate_response(response, settings_rating, rating_prompt_template):
     }
 
     rating_response, rating_cost = call_gpt(**rating_kwargs)
+    logger.info(f"Rating response: {rating_response}")
     if not rating_response.strip().endswith(']'):
         rating_response += "]"
-    rating_match = re.search(r'\[(\d+\.?\d*)\]', rating_response)
+    rating_match = re.search(r'\\?\[(\d+\.?\d*)\\?\]', rating_response)
     if rating_match:
         rating = float(rating_match.group(1))
         return rating, rating_cost, rating_response
-    return None, rating_cost, rating_response
+    else:
+        logger.error(f"No rating found in reply. Check your rating prompt.\nResponse: {response}\nRating response: {rating_response}")
+        return None, rating_cost, rating_response
 
 def run_single_iteration(args):
     (
@@ -517,7 +702,7 @@ def run_single_iteration(args):
         analyze_rating
     ) = args
     try:
-        logger.info(f"Chat {chat_index} iteration {iteration_index + 1} started.")
+        logger.debug(f"Chat {chat_index} iteration {iteration_index + 1} started.")
         updated_messages, response_cost = get_responses(
             copy.deepcopy(chat_info["messages"]),
             settings_response,
@@ -591,7 +776,7 @@ def run_analysis(
     progress_text = st.empty()
 
     results = []
-    errors = []  # To collect errors
+    errors = []
 
     # Prepare arguments for all iterations
     all_args = []
@@ -641,6 +826,8 @@ def run_analysis(
         st.error(f"Some iterations failed due to errors:\n\n{error_messages}")
         return  # Exit the function to prevent further processing
 
+    st.success("Analysis complete!", icon="✅")
+
     # Proceed with analysis only if there are successful results
     if not results:
         st.error("No successful results to analyze.")
@@ -666,8 +853,8 @@ def run_analysis(
         chat_results[chat_index]["total_cost"] += res["cost"]
         chat_results[chat_index]["messages_per_iteration"].append(res["messages"])
 
-    # Generate analysis data for all chats
-    analysis_data, plot_base64, total_cost = generate_analysis(
+    # Generate analysis data and plots
+    analysis_data, plot_base64_list, total_cost = generate_analysis(
         chat_results,
         analyze_rating,
         analyze_length
@@ -683,7 +870,7 @@ def run_analysis(
     # Generate the HTML report with comparative analysis
     html_report = create_html_report(
         analysis_data,
-        plot_base64,
+        plot_base64_list,
         total_cost,
         chat_data=chat_data,
         chat_results=chat_results,
@@ -706,22 +893,49 @@ def run_analysis(
             'temperature_rating': st.session_state.get('temperature_rating', 0.0),
             'analyze_rating': st.session_state.get('analyze_rating', True),
             'analyze_length': st.session_state.get('analyze_length', False),
-            'show_transcripts': st.session_state.get('show_transcripts', True)
+            'show_transcripts': st.session_state.get('show_transcripts', True),
+            '10x_iterations': st.session_state.get('10x_iterations', False)
         },
         chat_data=chat_data,
         analysis_data=analysis_data,
         chat_results=chat_results,
-        plot_base64=plot_base64
+        plot_base64_list=plot_base64_list
     )
 
-    # Store the results in session state
-    st.session_state['analysis_html_report'] = html_report
-    st.session_state['analysis_xlsx_data'] = xlsx_with_results
-    st.session_state['analysis_total_cost'] = total_cost  # If you want to display total cost
-    st.session_state['analysis_complete'] = True  # Flag to indicate analysis is complete
+    # Store results in session state
+    st.session_state['analysis_results'] = {
+        'html_report': html_report,
+        'xlsx_with_results': xlsx_with_results
+    }
 
-# Create two columns for "Run Analysis" and "Add Chat" buttons
-col1, col2 = st.columns([3, 1])  # Adjust the width ratios as needed
+def display_analysis_results():
+    if 'analysis_results' in st.session_state:
+        # Download button for the HTML report
+        st.download_button(
+            label="Download Report as HTML",
+            data=st.session_state['analysis_results']['html_report'],
+            file_name="analysis_report.html",
+            mime="text/html"
+        )
+
+        # Download button for the Experiment as XLSX
+        st.download_button(
+            label="Download Experiment as XLSX",
+            data=st.session_state['analysis_results']['xlsx_with_results'],
+            file_name="experiment_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Display the HTML report in Streamlit
+        st.components.v1.html(st.session_state['analysis_results']['html_report'], height=1000, scrolling=True)
+
+# Create three columns for "Run Analysis", "Reset", and "Add Chat" buttons
+col1, col2, col3 = st.columns([3, .5, .5])  # Adjust the width ratios as needed
+
+def reset_app():
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()
 
 with col1:
     if st.button("Run Analysis", key="run_analysis_button", type="primary"):
@@ -738,7 +952,7 @@ with col1:
             if has_empty_prompt:
                 break
 
-        # --- Validation for o1 models and system messages ---
+        # --- System message validation for o1 models ---
         model_response = st.session_state.get('model_response', "gpt-4o-mini")
         model_supports_system_message = not model_response.startswith("o1")
 
@@ -759,74 +973,61 @@ with col1:
             st.error("All prompt fields must contain text. Please fill in any empty prompts.")
         else:
             with st.spinner("Running analysis..."):
-                # Run the analysis function (results will be stored in session_state)
-                run_analysis(
-                    openai_api_key=st.session_state.get('openai_api_key', ""),
-                    anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
-                    gemini_api_key=st.session_state.get('gemini_api_key', ""),
-                    chat_data=chat_data,
-                    number_of_iterations=st.session_state.get('number_of_iterations', 3),
-                    model_response=st.session_state.get('model_response', "gpt-4o-mini"),
-                    temperature_response=st.session_state.get('temperature_response', 1.0),
-                    model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
-                    temperature_rating=st.session_state.get('temperature_rating', 0.0),
-                    analyze_rating=st.session_state.get('analyze_rating', True),
-                    analyze_length=st.session_state.get('analyze_length', False),
-                    show_transcripts=st.session_state.get('show_transcripts', True)
-                )
+                base_iterations = st.session_state.get('number_of_iterations', 3)
+                if st.session_state.get('10x_iterations', False):
+                    number_of_iterations = base_iterations * 10
+                else:
+                    number_of_iterations = base_iterations
 
-# Outside the button's if-block, check if analysis is complete and display results
-if st.session_state.get('analysis_complete', False):
-    st.success("Analysis complete!", icon="✅")
-    
-    # Display the total cost if needed
-    total_cost = st.session_state.get('analysis_total_cost', 0.0)
-    st.write(f"**Total Cost:** ${total_cost:.4f}")
-    
-    # Provide download buttons for the report and experiment results
-    st.download_button(
-        label="Download Report as HTML",
-        data=st.session_state['analysis_html_report'],
-        file_name="analysis_report.html",
-        mime="text/html"
-    )
+            run_analysis(
+                openai_api_key=st.session_state.get('openai_api_key', ""),
+                anthropic_api_key=st.session_state.get('anthropic_api_key', ""),
+                gemini_api_key=st.session_state.get('gemini_api_key', ""),
+                chat_data=chat_data,
+                number_of_iterations=number_of_iterations,
+                model_response=st.session_state.get('model_response', "gpt-4o-mini"),
+                temperature_response=st.session_state.get('temperature_response', 1.0),
+                model_rating=st.session_state.get('model_rating', "gpt-4o-mini"),
+                temperature_rating=st.session_state.get('temperature_rating', 0.0),
+                analyze_rating=st.session_state.get('analyze_rating', True),
+                analyze_length=st.session_state.get('analyze_length', False),
+                show_transcripts=st.session_state.get('show_transcripts', True)
+            )
 
-    st.download_button(
-        label="Download Experiment as XLSX",
-        data=st.session_state['analysis_xlsx_data'],
-        file_name="experiment_results.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # Display the HTML report within the Streamlit app
-    st.components.v1.html(st.session_state['analysis_html_report'], height=1000, scrolling=True)
+with col2:
+    if st.button("Reset", key="reset_button"):
+        reset_app()
 
 def add_chat():
     st.session_state.num_chats += 1
     st.session_state[f'prompt_count_chat_{st.session_state.num_chats}'] = 1
 
-with col2:
+with col3:
     st.button("Add Chat ➡️", key='add_chat_button', on_click=add_chat)
 
-# Now that chat_data is fully defined, we can generate the XLSX file
-xlsx_data = generate_settings_xlsx(
-    {
-        'number_of_iterations': st.session_state.get('number_of_iterations', 3),
-        'model_response': st.session_state.get('model_response', "gpt-4o-mini"),
-        'temperature_response': st.session_state.get('temperature_response', 1.0),
-        'model_rating': st.session_state.get('model_rating', "gpt-4o-mini"),
-        'temperature_rating': st.session_state.get('temperature_rating', 0.0),
-        'analyze_rating': st.session_state.get('analyze_rating', True),
-        'analyze_length': st.session_state.get('analyze_length', False),
-        'show_transcripts': st.session_state.get('show_transcripts', True)
-    },
-    chat_data
-)
+# Download buttons require the file to exist when they're created, so we have to pre-emptively generate the file
+if 'chat_data' in locals():
+    xlsx_data = generate_settings_xlsx(
+        {
+            'number_of_iterations': st.session_state.get('number_of_iterations', 3),
+            'model_response': st.session_state.get('model_response', "gpt-4o-mini"),
+            'temperature_response': st.session_state.get('temperature_response', 1.0),
+            'model_rating': st.session_state.get('model_rating', "gpt-4o-mini"),
+            'temperature_rating': st.session_state.get('temperature_rating', 0.0),
+            'analyze_rating': st.session_state.get('analyze_rating', True),
+            'analyze_length': st.session_state.get('analyze_length', False),
+            'show_transcripts': st.session_state.get('show_transcripts', True),
+            '10x_iterations': st.session_state.get('10x_iterations', False)
+        },
+        chat_data=chat_data,
+        validate_chat=False
+    )
+    st.sidebar.download_button(
+        label="Save",
+        data=xlsx_data,
+        file_name="experiment_settings.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-# Place the Download Experiment button after xlsx_data is generated
-st.sidebar.download_button(
-    label="Download Experiment",
-    data=xlsx_data,
-    file_name="test_settings.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+# Always display analysis results if they exist
+display_analysis_results()
